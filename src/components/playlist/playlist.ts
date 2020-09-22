@@ -10,6 +10,7 @@ import {
 	RegionsObject,
 	SMILFileObject,
 	SMILVideo,
+	SosModule,
 	CurrentlyPlaying,
 	SMILFile,
 	SMILImage,
@@ -17,9 +18,9 @@ import {
 	SMILWidget,
 	SMILMedia,
 	SMILMediaNoVideo,
-	SMILIntro, SosHtmlElement,
+	SMILIntro, SosHtmlElement, TriggerList,
 } from '../../models';
-import { FileStructure, SMILScheduleEnum, XmlTags, HtmlEnum, DeviceInfo } from '../../enums';
+import { FileStructure, SMILScheduleEnum, XmlTags, HtmlEnum, DeviceInfo, SMILEnums } from '../../enums';
 import { defaults as config } from '../../../config/parameters';
 import { IFile, IStorageUnit } from '@signageos/front-applet/es6/FrontApplet/FileSystem/types';
 import { getFileName, getRandomInt } from '../files/tools';
@@ -89,6 +90,11 @@ export class Playlist {
 		// extracts region info for all medias in playlist
 		await this.getAllInfo(smilObject.playlist, smilObject, internalStorageUnit);
 		debug('All elements info extracted');
+
+		await this.getAllInfo(smilObject.triggers, smilObject, internalStorageUnit, true);
+		debug('All triggers info extracted');
+
+		console.log(JSON.stringify(smilObject));
 	}
 
 	/**
@@ -218,6 +224,11 @@ export class Playlist {
 					});
 					callback();
 				},
+				async (callback) => {
+					// triggers processing
+					await this.watchTriggers(smilObject);
+					callback();
+				},
 			],       async (err) => {
 				if (err) {
 					reject(err);
@@ -232,9 +243,11 @@ export class Playlist {
 	 * @param playlist - smil file playlist, set of rules which media should be played and when
 	 * @param region - regions object with information about all regions
 	 * @param internalStorageUnit - persistent storage unit
+	 * @param isTrigger - boolean value determining if function is processing trigger playlist or ordinary playlist
 	 */
 	public getAllInfo = async (
-		playlist: PlaylistElement | PlaylistElement[], region: SMILFileObject, internalStorageUnit: IStorageUnit,
+		playlist: PlaylistElement | PlaylistElement[] | TriggerList, region: SMILFileObject, internalStorageUnit: IStorageUnit,
+		isTrigger: boolean = false,
 	): Promise<void> => {
 		let widgetRootFile: string = '';
 		let fileStructure: string = '';
@@ -287,10 +300,14 @@ export class Playlist {
 						if (key === 'img' || key === 'ref') {
 							createDomElement(elem, htmlElement);
 						}
+						// element will be played only on trigger emit in nested region
+						if (isTrigger) {
+							elem.isTrigger = true;
+						}
 					}
 				}
 			} else {
-				await this.getAllInfo(value, region, internalStorageUnit);
+				await this.getAllInfo(value, region, internalStorageUnit, isTrigger);
 			}
 		}
 	}
@@ -352,6 +369,11 @@ export class Playlist {
 				if (Array.isArray(value)) {
 					let arrayIndex = 0;
 					for (const valueElement of value) {
+						// skip trigger processing in automated playlist
+						if (valueElement.hasOwnProperty('begin') && valueElement.begin!.startsWith(SMILEnums.triggerFormat)) {
+							console.log('skipping trigger');
+							continue;
+						}
 						if (valueElement.hasOwnProperty('begin') && valueElement.begin.indexOf('wallclock') > -1
 							&& !isEqual(valueElement, this.introObject)
 							&& isNotPrefetchLoop(valueElement)) {
@@ -412,6 +434,11 @@ export class Playlist {
 						})());
 					}
 				} else {
+					// skip trigger processing in automated playlist
+					if (value.hasOwnProperty('begin') && value.begin!.startsWith(SMILEnums.triggerFormat)) {
+						console.log('skipping trigger');
+						continue;
+					}
 					if (value.hasOwnProperty('begin') && value.begin!.indexOf('wallclock') > -1) {
 						const {timeToStart, timeToEnd} = parseSmilSchedule(value.begin!, value.end);
 						if (timeToEnd === SMILScheduleEnum.neverPlay) {
@@ -473,6 +500,11 @@ export class Playlist {
 							await this.processPlaylist(wrapper, 'par', endTime);
 						})());
 					} else {
+						// skip trigger processing in automated playlist
+						if (value.hasOwnProperty('begin') && value.begin!.startsWith(SMILEnums.triggerFormat)) {
+							console.log('skipping trigger');
+							continue;
+						}
 						if (value.hasOwnProperty('begin') && value.begin!.indexOf('wallclock') > -1) {
 							const {timeToStart, timeToEnd} = parseSmilSchedule(value.begin!, value.end);
 							if (timeToEnd === SMILScheduleEnum.neverPlay) {
@@ -547,10 +579,18 @@ export class Playlist {
 		}
 	}
 
+	public watchTriggers = async (smilObject: SMILFileObject) => {
+		await sleep(20000);
+		const testingTrigger = 'trigger3';
+		console.log('startring trigger');
+		const triggerMedia = smilObject.triggers[testingTrigger];
+		await this.processPlaylist(triggerMedia);
+	}
+
 	private findFirstFreeRegion(regions: RegionAttributes[]): number {
 		let index = 0;
 		for (const region of regions) {
-			if (isNil(this.currentlyPlayingPriority[region.regionName])) {
+			if (isNil(this.currentlyPlaying[region.regionName])) {
 				return index;
 			}
 			index += 1;
@@ -830,41 +870,56 @@ export class Playlist {
 	private playVideo = async (video: SMILVideo) => {
 		try {
 			debug('Playing video: %O', video);
-			// prepare if video is not same as previous one played
-			if (get(this.currentlyPlaying[video.regionInfo.regionName], 'src') !== video.src) {
+			let regionInfo, parentRegion = regionInfo = video.regionInfo;
+		if (video.isTrigger && regionInfo.hasOwnProperty('region')) {
+			if (!Array.isArray(regionInfo.region)) {
+				regionInfo.region = [regionInfo.region];
+			}
+			// find first free region in nested regions, if none is free, take first one
+			regionInfo = regionInfo.region[this.findFirstFreeRegion(regionInfo.region)];
+		}
+		// prepare if video is not same as previous one played
+		if (get(this.currentlyPlaying[regionInfo.regionName], 'src') !== video.src) {
 				debug('Preparing video: %O', video);
 				await this.sos.video.prepare(
 					video.localFilePath,
-					video.regionInfo.left,
-					video.regionInfo.top,
-					video.regionInfo.width,
-					video.regionInfo.height,
+					regionInfo.left,
+					regionInfo.top,
+					regionInfo.width,
+					regionInfo.height,
 					config.videoOptions,
 				);
 			}
 
-			// cancel if video is not same as previous one played
-			if (get(this.currentlyPlaying[video.regionInfo.regionName], 'playing')
-				&& get(this.currentlyPlaying[video.regionInfo.regionName], 'src') !== video.src) {
-				await this.cancelPreviousMedia(video.regionInfo);
+			// cancel if video is not same as previous one played in the same region
+			if (get(this.currentlyPlaying[regionInfo.regionName], 'playing')
+				&& get(this.currentlyPlaying[regionInfo.regionName], 'src') !== video.src) {
+				await this.cancelPreviousMedia(regionInfo);
 			}
 
-			this.setCurrentlyPlaying(video, 'video', video.regionInfo.regionName);
+		// cancel if video is not same as previous one played in the parent region ( triggers case )
+		if (get(this.currentlyPlaying[parentRegion.regionName], 'playing')
+			&& get(this.currentlyPlaying[parentRegion.regionName], 'src') !== video.src) {
+			console.log('cancelling from parent region');
+			await this.cancelPreviousMedia(parentRegion);
+		}
+
+			this.setCurrentlyPlaying(video, 'video', regionInfo.regionName);
 
 			await this.sos.video.play(
 				video.localFilePath,
-				video.regionInfo.left,
-				video.regionInfo.top,
-				video.regionInfo.width,
-				video.regionInfo.height,
+				regionInfo.left,
+				regionInfo.top,
+				regionInfo.width,
+				regionInfo.height,
 			);
 
 			await this.sos.video.onceEnded(
 				video.localFilePath,
-				video.regionInfo.left,
-				video.regionInfo.top,
-				video.regionInfo.width,
-				video.regionInfo.height,
+				regionInfo.left,
+				regionInfo.top,
+				regionInfo.width,
+				regionInfo.height,
 			);
 			debug('Playing video finished: %O', video);
 
@@ -872,7 +927,7 @@ export class Playlist {
 			// stopping is handled by cancelPreviousMedia function
 			// force stop video only when reloading smil file due to new version of smil
 			if (this.getCancelFunction()) {
-				await this.cancelPreviousMedia(video.regionInfo);
+				await this.cancelPreviousMedia(regionInfo);
 			}
 		} catch (err) {
 			debug('Unexpected error: %O occurred during single video playback: O%', err, video);
