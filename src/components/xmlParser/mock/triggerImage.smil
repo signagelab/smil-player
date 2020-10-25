@@ -1,27 +1,6 @@
 <smil>
     <head>
         <meta http-equiv="Refresh" content="90"/>
-        <sensors>
-            <sensor type="rfid" id="rfid1" driver="nexmosphere">
-                <option name="address">003</option>
-            </sensor>
-            <sensor type="rfid" id="rfid2" driver="nexmosphere">
-                <option name="address">005</option>
-            </sensor>
-            <sensor type="rfid" id="rfid3" driver="nexmosphere">
-                <option name="address">007</option>
-                <option name="test5">111</option>
-            </sensor>
-        </sensors>
-        <triggers>
-            <trigger id="trigger3" condition="or">
-                <condition origin="rfid1" data="1" action="placed"/>
-                <condition origin="rfid2" data="2" action="placed"/>
-            </trigger>
-            <trigger id="trigger2" condition="or">
-                <condition origin="rfid3" data="3" action="placed"/>
-            </trigger>
-        </triggers>
         <layout>
             <root-layout width="1920" height="1080" backgroundColor="#FFFFFF"/>
             <region regionName="video" left="10" top="10" width="1280" height="720" z-index="1"
@@ -119,15 +98,15 @@
 
                                             <par>
                                                 <seq repeatCount="1">
+                                                    <img src="https://signageos-demo.s3.eu-central-1.amazonaws.com/smil/zones/files/img_1.jpg"
+                                                         region="video" dur="5s">
+                                                        <param name="cacheControl" value="onlyIfCached"/>
+                                                    </img>
+                                                    <img src="https://signageos-demo.s3.eu-central-1.amazonaws.com/smil/zones/files/img_4.jpg"
+                                                         region="video" dur="5s">
+                                                        <param name="cacheControl" value="onlyIfCached"/>
+                                                    </img>
 
-                                                    <video src="https://signageos-demo.s3.eu-central-1.amazonaws.com/smil/samples/assets/landscape1.mp4"
-                                                           type="application/widget" region="video">
-                                                        <param name="cacheControl" value="onlyIfCached"/>
-                                                    </video>
-                                                    <video src="https://signageos-demo.s3.eu-central-1.amazonaws.com/smil/samples/assets/landscape1.mp4"
-                                                           type="application/widget" region="video">
-                                                        <param name="cacheControl" value="onlyIfCached"/>
-                                                    </video>
 
                                                 </seq>
                                             </par>
@@ -136,8 +115,8 @@
                                             <par>
                                                 <seq begin="trigger">
 
-                                                    <img src="http://butikstv.centrumkanalen.com/play/media/rendered/bilder/ebbalunch.png"
-                                                         region="widget13" dur="60s">
+                                                    <img src="https://signageos-demo.s3.eu-central-1.amazonaws.com/smil/zones/files/img_1.jpg"
+                                                         region="widget13" dur="5s">
                                                         <param name="cacheControl" value="onlyIfCached"/>
                                                     </img>
 
@@ -147,27 +126,29 @@
 
                                             <par>
                                                 <seq begin="trigger2">
-                                                    <video src="https://signageos-demo.s3.eu-central-1.amazonaws.com/smil/zones/files/video_3.mp4"
-                                                           id="annons1" fit="hidden" region="video">
-                                                        <param name="cacheControl" value="auto"/>
-                                                    </video>
-                                                    <video src="https://signageos-demo.s3.eu-central-1.amazonaws.com/smil/zones/files/video_3.mp4"
-                                                           id="annons1" fit="hidden" region="video">
-                                                        <param name="cacheControl" value="auto"/>
-                                                    </video>
+                                                    <img src="https://signageos-demo.s3.eu-central-1.amazonaws.com/smil/zones/files/img_2.jpg"
+                                                         region="video" dur="5s">
+                                                        <param name="cacheControl" value="onlyIfCached"/>
+                                                    </img>
+                                                    <img src="https://signageos-demo.s3.eu-central-1.amazonaws.com/smil/zones/files/img_5.jpg"
+                                                         region="video" dur="5s">
+                                                        <param name="cacheControl" value="onlyIfCached"/>
+                                                    </img>
+
+
                                                 </seq>
                                             </par>
 
                                             <par>
                                                 <seq begin="trigger3">
-                                                    <video src="https://signageos-demo.s3.eu-central-1.amazonaws.com/smil/zones/files/video_3.mp4"
-                                                           id="annons1" fit="hidden" region="video">
-                                                        <param name="cacheControl" value="auto"/>
-                                                    </video>
-                                                    <video src="https://signageos-demo.s3.eu-central-1.amazonaws.com/smil/samples/assets/landscape2.mp4"
-                                                           id="annons1" fit="hidden" region="video">
-                                                        <param name="cacheControl" value="auto"/>
-                                                    </video>
+                                                    <img src="https://signageos-demo.s3.eu-central-1.amazonaws.com/smil/zones/files/img_3.jpg"
+                                                         region="video" dur="5s">
+                                                        <param name="cacheControl" value="onlyIfCached"/>
+                                                    </img>
+                                                    <img src="https://signageos-demo.s3.eu-central-1.amazonaws.com/smil/zones/files/img_6.jpg"
+                                                         region="video" dur="5s">
+                                                        <param name="cacheControl" value="onlyIfCached"/>
+                                                    </img>
                                                 </seq>
                                             </par>
 

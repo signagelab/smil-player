@@ -120,7 +120,6 @@ export class Files {
 	 * @param smilObject - JSON representation of parsed smil file
 	 * @param smilUrl -  url to smil file from input
 	 */
-		// @ts-ignore
 	public deleteUnusedFiles = async (internalStorageUnit: IStorageUnit, smilObject: SMILFileObject, smilUrl: string): Promise<void> => {
 		const smilMediaArray = [...smilObject.video, ...smilObject.audio, ...smilObject.ref, ...smilObject.img];
 
@@ -137,8 +136,7 @@ export class Files {
 					}
 				}
 
-				// if (!found && (getFileName(storedFile.filePath) !== getFileName(smilUrl))) {
-				if (!found) {
+				if (!found && (getFileName(storedFile.filePath) !== getFileName(smilUrl))) {
 					// delete only path with files, not just folders
 					if (storedFile.filePath.indexOf('.') > -1) {
 						debug(`File was not found in new SMIL file, deleting: %O`, storedFile);

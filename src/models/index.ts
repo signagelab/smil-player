@@ -18,13 +18,24 @@ export type RootLayout = {
 export type XmlSmilObject = {
 	smil: {
 		head: {
-			meta: {
+			meta: [{
 				content: string,
-			}
+			}],
 			layout: RegionsObject,
 		},
 		body: object,
 	},
+};
+
+export type XmlHeadObject = {
+	meta: SMILMetaObject[],
+	triggers?: SMILTriggers,
+	sensors?: SMILSensors,
+	layout: RegionsObject,
+};
+
+export type SMILMetaObject = {
+	content: string,
 };
 
 export type RegionAttributes = {
@@ -49,7 +60,7 @@ export type SMILVideo = {
 	playing?: boolean,
 	regionInfo: RegionAttributes,
 	media?: string,
-	isTrigger?: boolean,
+	triggerValue?: string,
 };
 
 export type SMILAudio = {
@@ -60,7 +71,7 @@ export type SMILAudio = {
 	regionInfo: RegionAttributes,
 	localFilePath: string,
 	playing?: boolean,
-	isTrigger?: boolean,
+	triggerValue?: string,
 };
 
 export type SMILImage = {
@@ -72,7 +83,7 @@ export type SMILImage = {
 	regionInfo: RegionAttributes,
 	localFilePath: string,
 	playing?: boolean,
-	isTrigger?: boolean,
+	triggerValue?: string,
 };
 
 export type SMILWidget = {
@@ -84,7 +95,7 @@ export type SMILWidget = {
 	regionInfo: RegionAttributes,
 	localFilePath: string,
 	playing?: boolean,
-	isTrigger?: boolean,
+	triggerValue?: string,
 };
 
 export type SosHtmlElement = {
@@ -92,6 +103,10 @@ export type SosHtmlElement = {
 	id: string,
 	media?: string,
 	playing?: boolean,
+	isTrigger?: boolean,
+	triggerValue?: string,
+	regionInfo: RegionAttributes,
+	localFilePath: string,
 };
 
 export type SMILIntro = {
@@ -112,12 +127,65 @@ export type DownloadsList = {
 };
 
 export type TriggerList = {
+	sensors: ParsedSensor[],
+	triggerSensorInfo: ParsedTriggerInfo,
 	triggers: { [key: string]: TriggerObject },
 };
 
 export type TriggerObject = {
 	begin: string,
 	[key: string]: SMILVideo[] | SMILImage[] | SMILWidget[] | SMILAudio[] | SMILIntro[] | string,
+};
+
+export type SMILTriggers = {
+	trigger: SMILTriggerInfo | SMILTriggerInfo[],
+};
+
+export type SMILTriggerInfo = {
+	id: string,
+	condition: SMILTriggerCondition | SMILTriggerCondition[],
+};
+
+export type SMILTriggerCondition = {
+	origin: string,
+	data?: string,
+	action: string,
+};
+
+export type SMILSensors = {
+	sensor: SMILSensor | SMILSensor[],
+};
+
+export type SMILSensor = {
+	type: string,
+	id: string,
+	driver: string,
+	option: SMILSensorOption | SMILSensorOption[],
+};
+
+export type SMILSensorOption = {
+	_: string,
+	name: string,
+};
+
+export type ParsedSensor = {
+	type: string,
+	id: string,
+	driver: string,
+	address?: string,
+	[key: string]: string | undefined,
+};
+
+export type ParsedTriggerInfo = {
+	[key: string]: {
+		condition: ParsedTriggerCondition[],
+		stringCondition: string,
+		trigger: string,
+	},
+};
+
+export type ParsedTriggerCondition = {
+	action: string,
 };
 
 export type CheckETagFunctions = {
@@ -160,8 +228,12 @@ export type PlaylistElement = {
 };
 
 export type CurrentlyPlaying = {
-	[regionName: string]: SosHtmlElement | SMILVideo,
+	[regionName: string]: PlayingInfo,
 };
+
+export type PlayingInfo = {
+	player?: string,
+} & SosHtmlElement & SMILVideo;
 
 export type SMILFileObject = SMILPlaylist & RegionsObject & DownloadsList & TriggerList;
 

@@ -3,7 +3,15 @@ export enum SMILEnums {
 	rootLayout = 'root-layout',
 	defaultRefresh = 20,
 	defaultDownloadRetry = 60,
+}
+
+export enum SMILTriggersEnum {
 	triggerFormat = 'trigger',
+	metaContent = 'content',
+	sensorRfid = 'rfid',
+	sensorNexmo = 'nexmosphere',
+	nexmoDevice = '/dev/ttyUSB0',
+	nexmoBaudRate = 115200,
 }
 
 export enum FileStructure {
@@ -18,6 +26,10 @@ export enum FileStructure {
 export enum HtmlEnum {
 	img = 'img',
 	ref = 'iframe',
+	top = 'top',
+	width = 'width',
+	height = 'height',
+	left = 'left',
 	widgetRoot = '/index.html',
 	video = 'video',
 }
@@ -46,6 +58,10 @@ export const XmlTags = {
 	cssElements: ['z-index'],
 	additionalCssExtract: ['fit'],
 	regionNameAlias: 'xml:id',
+};
+
+export const DeviceModels = {
+	slowerDevices: ['Raspberry'],
 };
 
 export enum DeviceInfo {

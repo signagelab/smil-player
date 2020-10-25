@@ -66,6 +66,7 @@ async function main(internalStorageUnit: IStorageUnit, smilUrl: string, thisSos:
 	resetBodyContent();
 
 	const smilObject: SMILFileObject = await processSmil(smilFileContent);
+	console.log(JSON.stringify(smilObject));
 	debug('SMIL file parsed: %O', smilObject);
 
 	// download and play intro file if exists ( image or video )
@@ -117,7 +118,6 @@ async function startSmil(smilUrl: string) {
 const smilForm = <HTMLElement> document.getElementById('SMILUrlWrapper');
 smilForm.onsubmit = async function (event: Event) {
 	event.preventDefault();
-	Debug.enable('@signageos/smil-player:*');
 	const smilUrl = (<HTMLInputElement> document.getElementById('SMILUrl')).value;
 	debug('Smil file url is: %s', smilUrl);
 	await startSmil(smilUrl);

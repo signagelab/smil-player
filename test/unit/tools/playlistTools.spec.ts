@@ -151,6 +151,7 @@ describe('Playlist tools component', () => {
 				fileSystem: 'notSet',
 				video: 'notSet',
 				management: 'notSet',
+				hardware: 'notSet',
 			};
 			const files = new Files(sos);
 			const playlist = new Playlist(sos, files);
@@ -411,7 +412,7 @@ describe('Playlist tools component', () => {
 		});
 		it('Should return correct times for how long to wait and how long to play - weekdays specified after', async () => {
 			let mediaDuration = 3;
-			let dayOfWeek = moment().isoWeekday() + 3;
+			let dayOfWeek = (moment().isoWeekday() + 3) % 7;
 			// convert date to ISO format, remove milliseconds => format to this string wallclock(R/2011-01-01+w3T07:00:00/P1D)
 			let testStartString = formatWeekDate(`wallclock(R/${formatDate(moment())}/P1D)`, `+w${dayOfWeek}`);
 			let testEndString = formatWeekDate(`wallclock(R/${formatDate(moment().add(mediaDuration, 'hours'))}/P1D)`, `+w${dayOfWeek}`);
@@ -476,7 +477,7 @@ describe('Playlist tools component', () => {
 			expect(Math.abs(moment().add(mediaDuration, 'hours').valueOf() - responseTimeObject.timeToEnd)).to.be.lessThan(1000);
 
 			mediaDuration = 4;
-			dayOfWeek = moment().isoWeekday() + 2;
+			dayOfWeek = Math.abs(moment().isoWeekday() + 2) % 7;
 			// convert date to ISO format, remove milliseconds => format to this string wallclock(R/2011-01-01-w3T07:00:00/P1D)
 			testStartString = formatWeekDate(`wallclock(R/${formatDate(moment().add(28, 'days'))}/P1D)`, `-w${dayOfWeek}`);
 			testEndString = formatWeekDate(`wallclock(R/${formatDate(moment().add(28, 'days').add(mediaDuration, 'hours'))}/P1D)`, `-w${dayOfWeek}`);
