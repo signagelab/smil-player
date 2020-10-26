@@ -66,7 +66,6 @@ async function main(internalStorageUnit: IStorageUnit, smilUrl: string, thisSos:
 	resetBodyContent();
 
 	const smilObject: SMILFileObject = await processSmil(smilFileContent);
-	console.log(JSON.stringify(smilObject));
 	debug('SMIL file parsed: %O', smilObject);
 
 	// download and play intro file if exists ( image or video )

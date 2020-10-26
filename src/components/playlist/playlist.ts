@@ -6,14 +6,14 @@ import set = require('lodash/set');
 import { isEqual } from "lodash";
 import { parallel } from 'async';
 import FrontApplet from '@signageos/front-applet/es6/FrontApplet/FrontApplet';
-import Nexmosphere from '@signageos/front-applet-extension-nexmosphere/es6';
+// @ts-ignore
+import Nexmosphere from '@signageos/front-applet-extension-nexmosphere';
 
 import {
 	RegionAttributes,
 	RegionsObject,
 	SMILFileObject,
 	SMILVideo,
-	SosModule,
 	CurrentlyPlaying,
 	SMILFile,
 	SMILImage,
@@ -23,7 +23,7 @@ import {
 	SMILMediaNoVideo,
 	SMILIntro, SosHtmlElement, TriggerList, ParsedTriggerCondition, ParsedSensor, PlayingInfo,
 } from '../../models';
-import { FileStructure, SMILScheduleEnum, XmlTags, HtmlEnum, SMILTriggersEnum, DeviceInfo, SMILEnums } from '../../enums';
+import { FileStructure, SMILScheduleEnum, XmlTags, HtmlEnum, SMILTriggersEnum, DeviceInfo } from '../../enums';
 import { defaults as config } from '../../../config/parameters';
 import { IFile, IStorageUnit } from '@signageos/front-applet/es6/FrontApplet/FileSystem/types';
 import { getFileName, getRandomInt } from '../files/tools';
@@ -567,8 +567,8 @@ export class Playlist {
 		let serialPort;
 		try {
 			serialPort = await this.sos.hardware.openSerialPort({
-				device: SMILTriggersEnum.nexmoDevice,
-				baudRate: SMILTriggersEnum.nexmoBaudRate,
+				device: <string> SMILTriggersEnum.nexmoDevice,
+				baudRate: <number> SMILTriggersEnum.nexmoBaudRate,
 			});
 		} catch (err) {
 			debug('Error occured during Nexmosphere trigger initialization: %O', err);
@@ -771,10 +771,11 @@ export class Playlist {
 		filepath: string, regionInfo: RegionAttributes, duration: string, triggerValue: string | undefined,
 	): Promise<string | void> => {
 		return new Promise(async (resolve) => {
-			try {let element = <HTMLElement> document.getElementById(generateElementId(filepath, regionInfo.regionName));
+			try {
+				let element = <HTMLElement> document.getElementById(generateElementId(filepath, regionInfo.regionName));
 
-			// set correct duration
-			const parsedDuration: number = setElementDuration(duration);
+				// set correct duration
+				const parsedDuration: number = setElementDuration(duration);
 
 				// add query parameter to invalidate cache on devices
 				if (element.getAttribute('src') === null) {
@@ -792,27 +793,26 @@ export class Playlist {
 					element.style.display = 'block';
 				}
 
-
-			const sosHtmlElement: SosHtmlElement = {
-				src: <string> element.getAttribute('src'),
-				id: element.id,
-				regionInfo,
-				localFilePath:  filepath,
-			};
+				const sosHtmlElement: SosHtmlElement = {
+					src: <string> element.getAttribute('src'),
+					id: element.id,
+					regionInfo,
+					localFilePath:  filepath,
+				};
 
 				if (!isNil(triggerValue)) {
-				sosHtmlElement.triggerValue = triggerValue;
-			}
+					sosHtmlElement.triggerValue = triggerValue;
+				}
 
-			const parentRegion = regionInfo;
-			let localRegionInfo = await this.handleTriggers(sosHtmlElement, element);
+				const parentRegion = regionInfo;
+				let localRegionInfo = await this.handleTriggers(sosHtmlElement, element);
 
-			const response = await this.waitMediaOnScreen(localRegionInfo, parentRegion, parsedDuration, sosHtmlElement);
+				const response = await this.waitMediaOnScreen(localRegionInfo, parentRegion, parsedDuration, sosHtmlElement);
 				resolve(response);
-			} catch (err) {
-				debug('Unexpected error: %O during html element playback: %s', err, filepath);
-				resolve();
-			}
+				} catch (err) {
+					debug('Unexpected error: %O during html element playback: %s', err, filepath);
+					resolve();
+				}
 		});
 	}
 
@@ -899,21 +899,21 @@ export class Playlist {
 						regionInfo.top,
 						regionInfo.width,
 						regionInfo.height,
-					config.videoOptions,
-				);
-			}
-			// cancel if there was image player before and only for first video playing
+						config.videoOptions,
+					);
+				}
+				// cancel if there was image player before and only for first video playing
 				if (get(this.currentlyPlaying[regionInfo.regionName], 'playing') && i === 0
 					&& get(this.currentlyPlaying[regionInfo.regionName], 'media') === 'html') {
 					await this.cancelPreviousMedia(regionInfo);
-			}
+				}
 
-			// cancel if video is not same as previous one played in the parent region ( triggers case )
-			if (get(this.currentlyPlaying[parentRegion.regionName], 'playing')
-				&& (get(this.currentlyPlaying[parentRegion.regionName], 'src') !== currentVideo.src
-				|| parentRegion.regionName !== regionInfo.regionName)
-				&& !isNil(currentVideo.triggerValue)) {
-				await this.cancelPreviousMedia(parentRegion);
+				// cancel if video is not same as previous one played in the parent region ( triggers case )
+				if (get(this.currentlyPlaying[parentRegion.regionName], 'playing')
+					&& (get(this.currentlyPlaying[parentRegion.regionName], 'src') !== currentVideo.src
+					|| parentRegion.regionName !== regionInfo.regionName)
+					&& !isNil(currentVideo.triggerValue)) {
+					await this.cancelPreviousMedia(parentRegion);
 				}
 
 				this.setCurrentlyPlaying(currentVideo, 'video', regionInfo.regionName);
@@ -937,29 +937,29 @@ export class Playlist {
 						regionInfo.width,
 						regionInfo.height,
 				);
-				previousVideo.playing = false;
-			}
+					previousVideo.playing = false;
+				}
 
-			if (nextVideo.src !== currentVideo.src) {
+				if (nextVideo.src !== currentVideo.src) {
 				debug('Preparing video next: %O', nextVideo);
 				await this.sos.video.prepare(
 					nextVideo.localFilePath,
 					regionInfo.left,
-						regionInfo.top,
-						regionInfo.width,
-						regionInfo.height,
-						config.videoOptions,
+					regionInfo.top,
+					regionInfo.width,
+					regionInfo.height,
+					config.videoOptions,
 					);
 				}
 
-			await this.sos.video.onceEnded(
+				await this.sos.video.onceEnded(
 				currentVideo.localFilePath,
 				currentVideo.regionInfo.left,
 				currentVideo.regionInfo.top,
 				currentVideo.regionInfo.width,
 				currentVideo.regionInfo.height,
 			);
-			debug('Finished playing video: %O', currentVideo);
+				debug('Finished playing video: %O', currentVideo);
 
 				// stopped because of higher priority playlist will start to play
 				if (this.currentlyPlaying[regionInfo.regionName].player === 'stop') {
@@ -1054,21 +1054,21 @@ export class Playlist {
 		try {
 			debug('Playing video: %O', video);
 			const parentRegion = video.regionInfo;
-		let regionInfo = await this.handleTriggers(video);
+			let regionInfo = await this.handleTriggers(video);
 
-		this.setCurrentlyPlaying(video, 'video', regionInfo.regionName);
-		// prepare if video is not same as previous one played
-		if (get(this.currentlyPlaying[regionInfo.regionName], 'src') !== video.src) {
-				debug('Preparing video: %O', video);
-				await this.sos.video.prepare(
-					video.localFilePath,
-					regionInfo.left,
-					regionInfo.top,
-					regionInfo.width,
-					regionInfo.height,
-					config.videoOptions,
-				);
-			}
+			this.setCurrentlyPlaying(video, 'video', regionInfo.regionName);
+			// prepare if video is not same as previous one played
+			if (get(this.currentlyPlaying[regionInfo.regionName], 'src') !== video.src) {
+					debug('Preparing video: %O', video);
+					await this.sos.video.prepare(
+						video.localFilePath,
+						regionInfo.left,
+						regionInfo.top,
+						regionInfo.width,
+						regionInfo.height,
+						config.videoOptions,
+					);
+				}
 
 			// cancel if video is not same as previous one played in the same region
 			if (get(this.currentlyPlaying[regionInfo.regionName], 'playing')
@@ -1076,21 +1076,20 @@ export class Playlist {
 				await this.cancelPreviousMedia(regionInfo);
 			}
 
-		// cancel if video is not same as previous one played in the parent region ( triggers case )
-		if (get(this.currentlyPlaying[parentRegion.regionName], 'playing')
-			&& get(this.currentlyPlaying[parentRegion.regionName], 'src') !== video.src) {
-			await this.cancelPreviousMedia(parentRegion);
-		}
+			// cancel if video is not same as previous one played in the parent region ( triggers case )
+			if (get(this.currentlyPlaying[parentRegion.regionName], 'playing')
+				&& get(this.currentlyPlaying[parentRegion.regionName], 'src') !== video.src) {
+				await this.cancelPreviousMedia(parentRegion);
+			}
 
 			await this.sos.video.play(
-			video.localFilePath,
-			regionInfo.left,
-			regionInfo.top,
-			regionInfo.width,
-			regionInfo.height,
-		);
+				video.localFilePath,
+				regionInfo.left,
+				regionInfo.top,
+				regionInfo.width,
+				regionInfo.height,
+			);
 
-			try {
 			await this.sos.video.onceEnded(
 				video.localFilePath,
 				regionInfo.left,
@@ -1099,12 +1098,8 @@ export class Playlist {
 				regionInfo.height,
 			);
 			debug('Playing video finished: %O', video);
-		} catch (err) {
-			debug('Error occurred during video playback: %O, error: %O', video, err);
 
-		}
-
-		video.playing = false;
+			video.playing = false;
 
 			// no video.stop function so one video can be played gapless in infinite loop
 			// stopping is handled by cancelPreviousMedia function
