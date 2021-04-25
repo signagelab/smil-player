@@ -72,6 +72,8 @@
     "webpack-dev-server": "3.11.0"
   },
   "dependencies": {
+    "@signageos/adobe-aem-auth": "0.0.1-mz-auth.11",
+    "@signageos/adobe-aem-to-smil-convertor": "0.0.1-mz-impl.21",
     "@signageos/front-applet-extension-nexmosphere": "^0.1.3",
     "@types/object-hash": "^2.1.0",
     "async": "^3.2.0",

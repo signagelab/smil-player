@@ -13,16 +13,48 @@ import { processSmil } from './components/xmlParser/xmlParse';
 import { Files } from './components/files/files';
 import { Playlist } from './components/playlist/playlist';
 import { SMILEnums } from './enums/generalEnums';
-import { createLocalFilePath, getFileName } from './components/files/tools';
+import { getFileName } from './components/files/tools';
 import { FileStructure } from './enums/fileEnums';
 import { SMILFile, SMILFileObject } from './models/filesModels';
 import { generateBackupImagePlaylist, getDefaultRegion, sleep } from './components/playlist/tools/generalTools';
 import { resetBodyContent } from './components/playlist/tools/htmlTools';
+import { convertAEMToSMIL } from '@signageos/adobe-aem-to-smil-convertor';
+import { AEMAutoAuth } from '@signageos/adobe-aem-auth';
+import { corsAnywhere } from '../config/parameters';
 const files = new Files(sos);
 
 const debug = Debug('@signageos/smil-player:main');
 
-async function main(internalStorageUnit: IStorageUnit, smilUrl: string, thisSos: FrontApplet) {
+async function main(
+	internalStorageUnit: IStorageUnit,
+	aemBaseUrl: string,
+	deviceUsername: string,
+	thisSos: FrontApplet,
+) {
+	const aemDisplayPath = `/content/screens/svc.config.json?id=${deviceUsername}&needData=true`;
+	const aemPingPath = `/content/screens/svc.ping.json?id=${deviceUsername}`;
+	const aemDisplayUrl = `${aemBaseUrl}${aemDisplayPath}`;
+	const smilLocalPath = `${FileStructure.rootFolder}/${getFileName(aemDisplayUrl)}`;
+	const maxResolution = {
+		width: window.innerWidth,
+		height: window.innerHeight,
+	};
+	const fetcher = (name: string) => async (relativePath: string, headers?: Record<string, string>) => {
+		const url = `${corsAnywhere}${aemBaseUrl}${relativePath}`;
+		const authHeaders = window.getAuthHeaders?.(url);
+		const resp = await fetch(url, {
+			headers: { ...authHeaders, ...headers },
+		});
+		if (!resp.ok) {
+			throw new Error(`Cannot download resource ${name} from ${aemBaseUrl + relativePath}: ${await resp.text()}`);
+		}
+		const json = resp.json();
+		return json;
+	};
+	const fetchers = {
+		channel: fetcher('channel'),
+	};
+
 	const playlist = new Playlist(sos, files);
 	// enable internal endless loops for playing media
 	playlist.disableLoop(false);
@@ -31,14 +63,11 @@ async function main(internalStorageUnit: IStorageUnit, smilUrl: string, thisSos:
 
 	resetBodyContent();
 
-	const smilFile: SMILFile = {
-		src: smilUrl,
-	};
 	let downloadPromises: Promise<Function[]>[] = [];
 	let forceDownload = false;
 
 	// set smilUrl in files instance ( links to files might me in media/file.mp4 format )
-	files.setSmilUrl(smilUrl);
+	files.setSmilUrl(aemDisplayUrl);
 
 	try {
 		if (!isNil(sos.config.backupImageUrl) && !isNil(await files.fetchLastModified(sos.config.backupImageUrl))) {
@@ -53,6 +82,42 @@ async function main(internalStorageUnit: IStorageUnit, smilUrl: string, thisSos:
 		debug('Unexpected error occurred during backup image download : %O', err);
 	}
 
+	async function downloadSMIL() {
+		// This is the replacement for standard SMIL download. AEM needs to process JSON files to create SMIL file
+		const aemDisplay = await fetcher('display')(aemDisplayPath);
+		const smilContent = await convertAEMToSMIL(
+			aemDisplay,
+			fetchers,
+			{ baseUrl: aemBaseUrl, maxResolution },
+		);
+		await thisSos.fileSystem.writeFile(
+			{
+				storageUnit: internalStorageUnit,
+				filePath: smilLocalPath,
+			},
+			smilContent,
+		);
+	}
+	async function fetchLastModifiedSMIL(): Promise<number | null> {
+		const pingHeaders = {
+			'X-SET-HEARTBEAT': 'TRUE',
+			'Content-Type': 'application/x-www-form-urlencoded',
+			'Accept': 'application/json',
+		};
+		try {
+			const { lastModified } = await fetcher('ping')(aemPingPath, pingHeaders);
+			return lastModified;
+		} catch (error) {
+			debug('Cannot fetch last-modified header of SMIL', error);
+			return null;
+		}
+	}
+	const aemDisplayFile: SMILFile = {
+		src: aemDisplayUrl,
+		download: downloadSMIL,
+		fetchLastModified: fetchLastModifiedSMIL,
+	};
+
 	let smilFileContent: string = '';
 
 	// wait for successful download of SMIL file, if download or read from internal storage fails
@@ -60,15 +125,15 @@ async function main(internalStorageUnit: IStorageUnit, smilUrl: string, thisSos:
 	while (smilFileContent === '') {
 		try {
 			// download SMIL file if device has internet connection and smil file exists on remote server
-			if (!isNil(await files.fetchLastModified(smilFile.src))) {
+			if (!isNil(await fetchLastModifiedSMIL())) {
 				forceDownload = true;
-				downloadPromises = await files.parallelDownloadAllFiles(internalStorageUnit, [smilFile], FileStructure.rootFolder, forceDownload);
+				downloadPromises = await files.parallelDownloadAllFiles(internalStorageUnit, [aemDisplayFile], FileStructure.rootFolder, forceDownload);
 				await Promise.all(downloadPromises);
 			}
 
 			smilFileContent = await thisSos.fileSystem.readFile({
 				storageUnit: internalStorageUnit,
-				filePath: `${FileStructure.rootFolder}/${getFileName(smilFile.src)}`,
+				filePath: smilLocalPath,
 			});
 
 			debug('SMIL file downloaded');
@@ -96,18 +161,18 @@ async function main(internalStorageUnit: IStorageUnit, smilUrl: string, thisSos:
 
 		// download and play intro file if exists ( image or video )
 		if (smilObject.intro.length > 0) {
-			await playlist.playIntro(smilObject, internalStorageUnit, smilUrl);
+			await playlist.playIntro(smilObject, internalStorageUnit, aemDisplayUrl);
 		} else {
 			// no intro
 			debug('No intro element found');
 			downloadPromises = await files.prepareDownloadMediaSetup(internalStorageUnit, smilObject);
 			await Promise.all(downloadPromises);
 			debug('SMIL media files download finished');
-			await playlist.manageFilesAndInfo(smilObject, internalStorageUnit, smilUrl);
+			await playlist.manageFilesAndInfo(smilObject, internalStorageUnit, aemDisplayUrl);
 		}
 
 		debug('Starting to process parsed smil file');
-		await playlist.processingLoop(internalStorageUnit, smilObject, smilFile);
+		await playlist.processingLoop(internalStorageUnit, smilObject, aemDisplayFile);
 	} catch (err) {
 		debug('Unexpected error during xml parse: %O', err);
 		debug('Starting to play backup image');
@@ -123,7 +188,35 @@ async function main(internalStorageUnit: IStorageUnit, smilUrl: string, thisSos:
 	}
 }
 
-async function startSmil(smilUrl: string) {
+async function startAEM(aemBaseUrl: string, registrationKey: string) {
+	const aemAutoAuth = new AEMAutoAuth({
+		baseUrl: `${corsAnywhere}${aemBaseUrl}`,
+		csrfIntervalMs: 30e3,
+		initiateRetryCount: Infinity,
+		retryCount: 3,
+		retryIntervalMs: 5e3,
+		resetCredentialsEveryRetryCount: Infinity,
+		resetLoginTokenEveryRetryCount: 10,
+	});
+	window.getAuthHeaders = (url: string) => {
+		return url.startsWith(`${corsAnywhere}${aemBaseUrl}`) ? aemAutoAuth.getRequestHeaders() : {};
+	};
+	const { initPromise, initError } = await aemAutoAuth.start(registrationKey);
+	if (initError) {
+		debug('Initiation of AEM authentication failed', initError);
+	}
+
+	let aemCredentials = aemAutoAuth.getCredentials();
+
+	if (!aemCredentials) {
+		// First registration has to wait for resolve initiation
+		await initPromise;
+		aemCredentials = aemAutoAuth.getCredentials();
+		if (!aemCredentials) {
+			// This should not happen because initiateRetryCount is Infinite
+			throw new Error('Credentials are still not available');
+		}
+	}
 	const storageUnits = await sos.fileSystem.listStorageUnits();
 
 	// reference to persistent storage unit, where player stores all content
@@ -133,20 +226,9 @@ async function startSmil(smilUrl: string) {
 
 	debug('File structure created');
 
-	if (await files.fileExists(internalStorageUnit, createLocalFilePath(FileStructure.smilMediaInfo, FileStructure.smilMediaInfoFileName))) {
-		const fileContent = JSON.parse(await files.readFile(
-			internalStorageUnit, createLocalFilePath(FileStructure.smilMediaInfo, FileStructure.smilMediaInfoFileName)));
-
-		// delete mediaInfo file only in case that currently played smil is different from previous
-		if (!fileContent.hasOwnProperty(getFileName(smilUrl))) {
-			// delete mediaInfo file, so each smil has fresh start for lastModified tags for files
-			await files.deleteFile(internalStorageUnit, createLocalFilePath(FileStructure.smilMediaInfo, FileStructure.smilMediaInfoFileName));
-		}
-	}
-
 	while (true) {
 		try {
-			await main(internalStorageUnit, smilUrl, sos);
+			await main(internalStorageUnit, aemBaseUrl, aemCredentials.username, sos);
 			debug('One smil iteration finished');
 		} catch (err) {
 			debug('Unexpected error : %O', err);
@@ -154,21 +236,16 @@ async function startSmil(smilUrl: string) {
 		}
 	}
 }
-// self invoking function to start smil processing if smilUrl is defined in sos.config via timings
+
+// self invoking function to start smil processing if defined in sos.config via timings
 (async() => {
 	await sos.onReady();
-	if (sos.config.smilUrl) {
-		debug('sOS is ready');
-		debug('Smil file url is: %s', sos.config.smilUrl);
-		await startSmil(sos.config.smilUrl);
-	}
-})();
+	debug('sOS is ready');
 
-// get values from form onSubmit and start processing
-const smilForm = <HTMLElement> document.getElementById('SMILUrlWrapper');
-smilForm.onsubmit = async function (event: Event) {
-	event.preventDefault();
-	const smilUrl = (<HTMLInputElement> document.getElementById('SMILUrl')).value;
-	debug('Smil file url is: %s', smilUrl);
-	await startSmil(smilUrl);
-};
+	if (!sos.config.aemBaseUrl || !sos.config.registrationKey) {
+		throw new Error('SOS config aemBaseUrl & registrationKey are required');
+	}
+
+	debug('AEM display config: %s', sos.config.aemBaseUrl, sos.config.registrationKey);
+	await startAEM(sos.config.aemBaseUrl, sos.config.registrationKey);
+})();
