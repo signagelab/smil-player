@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - fix bug with default region not having proper name
 
 ### Added
+- added optional `serialPortDevice` in sos.config to dynamically define device address for serial communication
 - added support for backup image if smil-player fails on smil file download or smil xml parse
 functionality supports image stored directly in smil repo or on remote server.
 
