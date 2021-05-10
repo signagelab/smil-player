@@ -38,7 +38,7 @@ export class Files {
 
 	public extractWidgets = async (widgets: SMILWidget[], internalStorageUnit: IStorageUnit) => {
 		for (let i = 0; i < widgets.length; i++) {
-			if (isUrl(widgets[i].src) && widgets[i].src.indexOf('.wgt') > -1) {
+			if (isUrl(widgets[i].src) && widgets[i].src.indexOf('.wgt') > -1) { // TODO introduce .endsWith('.wgt')
 				debug(`Extracting widget: %O to destination path: %O`, widgets[i], `${FileStructure.extracted}	${getFileName(widgets[i].src)}`);
 				await this.sos.fileSystem.extractFile(
 					{
@@ -241,7 +241,7 @@ export class Files {
 				}
 				if (!found && storedFileName !== getFileName(smilUrl) && !storedFileName.includes(FileStructure.smilMediaInfoFileName)) {
 					// delete only path with files, not just folders
-					if (storedFile.filePath.indexOf('.') > -1) {
+					if (storedFile.filePath.indexOf('.') > -1) { // TODO . is not correct checking folder
 						debug(`File was not found in new SMIL file, deleting: %O`, storedFile);
 						await this.sos.fileSystem.deleteFile({
 							storageUnit: internalStorageUnit,
