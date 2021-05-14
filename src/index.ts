@@ -13,16 +13,61 @@ import { processSmil } from './components/xmlParser/xmlParse';
 import { Files } from './components/files/files';
 import { Playlist } from './components/playlist/playlist';
 import { SMILEnums } from './enums/generalEnums';
-import { createLocalFilePath, getFileName } from './components/files/tools';
+import { getFileName } from './components/files/tools';
 import { FileStructure } from './enums/fileEnums';
 import { SMILFile, SMILFileObject } from './models/filesModels';
 import { generateBackupImagePlaylist, getDefaultRegion, sleep } from './components/playlist/tools/generalTools';
 import { resetBodyContent } from './components/playlist/tools/htmlTools';
+import { convertAIRToSMIL } from '@signageos/broadsign-air-to-smil-convertor';
+import { corsAnywhere } from '../config/parameters';
+import { AIRPlaylistResponse } from '@signageos/broadsign-air-to-smil-convertor/dist/node/AIR/playlist';
+import { Duration } from '@signageos/broadsign-air-to-smil-convertor/dist/node/AIR/general';
 const files = new Files(sos);
 
 const debug = Debug('@signageos/smil-player:main');
 
-async function main(internalStorageUnit: IStorageUnit, smilUrl: string, thisSos: FrontApplet) {
+interface AIRConfig {
+	baseUrl: string;
+	duration: Duration;
+	playerId: string;
+	authToken: string;
+}
+
+async function main(
+	internalStorageUnit: IStorageUnit,
+	airConfig: AIRConfig,
+	thisSos: FrontApplet,
+) {
+	const airGeneratePath = `/playlist/v1/generate`;
+	const airGenerateUrl = `${airConfig.baseUrl}${airGeneratePath}`;
+	const smilLocalPath = `${FileStructure.rootFolder}/${getFileName(airGenerateUrl)}`;
+	const maxResolution = {
+		width: window.innerWidth,
+		height: window.innerHeight,
+	};
+	const fetcher = async (relativePath: string) => {
+		const headers = {
+			'Authorization': `Bearer ${airConfig.authToken}`,
+			'Content-Type': 'application/json',
+			'Accept': 'application/json',
+		};
+		const body = JSON.stringify({
+			player_identifier: airConfig.playerId,
+			duration: airConfig.duration,
+		});
+		const url = `${corsAnywhere}${airConfig.baseUrl}${relativePath}`;
+		const resp = await fetch(url, {
+			method: 'POST',
+			headers,
+			body,
+		});
+		if (!resp.ok) {
+			throw new Error(`Cannot download resource ${name} from ${airConfig.baseUrl + relativePath}: ${await resp.text()}`);
+		}
+		const json = resp.json();
+		return json;
+	};
+
 	const playlist = new Playlist(sos, files);
 	// enable internal endless loops for playing media
 	playlist.disableLoop(false);
@@ -31,14 +76,11 @@ async function main(internalStorageUnit: IStorageUnit, smilUrl: string, thisSos:
 
 	resetBodyContent();
 
-	const smilFile: SMILFile = {
-		src: smilUrl,
-	};
 	let downloadPromises: Promise<Function[]>[] = [];
 	let forceDownload = false;
 
 	// set smilUrl in files instance ( links to files might me in media/file.mp4 format )
-	files.setSmilUrl(smilUrl);
+	files.setSmilUrl(airGenerateUrl);
 
 	try {
 		if (!isNil(sos.config.backupImageUrl) && !isNil(await files.fetchLastModified(sos.config.backupImageUrl))) {
@@ -53,6 +95,62 @@ async function main(internalStorageUnit: IStorageUnit, smilUrl: string, thisSos:
 		debug('Unexpected error occurred during backup image download : %O', err);
 	}
 
+	let lastPlaylist: { response: AIRPlaylistResponse; modifiedAt: number } | null = null;
+
+	function didPlaylistChanged(lastPlaylistResp: AIRPlaylistResponse | undefined, newPlaylistResp: AIRPlaylistResponse) {
+		if (!lastPlaylistResp) {
+			return true;
+		}
+		if (lastPlaylistResp.contents.length !== newPlaylistResp.contents.length) {
+			return true;
+		}
+		if (lastPlaylistResp.items.map((i) => i.token).join(',') !== newPlaylistResp.items.map((i) => i.token).join(',')) {
+			return true;
+		}
+		if (JSON.stringify(lastPlaylistResp.contents) !== JSON.stringify(newPlaylistResp.contents)) {
+			return true;
+		}
+		return false;
+	}
+
+	async function downloadSMIL() {
+		// This is the replacement for standard SMIL download. Broadsign AIR needs to process JSON files to create SMIL file
+		if (!lastPlaylist?.response) {
+			throw new Error(`The AIR playlist was not generated yet`);
+		}
+		const smilContent = await convertAIRToSMIL(
+			lastPlaylist?.response,
+			{ maxResolution },
+		);
+		await thisSos.fileSystem.writeFile(
+			{
+				storageUnit: internalStorageUnit,
+				filePath: smilLocalPath,
+			},
+			smilContent,
+		);
+	}
+	async function fetchLastModifiedSMIL(): Promise<number | null> {
+		try {
+			const airPlaylistResponse: AIRPlaylistResponse = await fetcher(airGeneratePath);
+			if (didPlaylistChanged(lastPlaylist?.response, airPlaylistResponse)) {
+				lastPlaylist = {
+					modifiedAt: new Date().valueOf(),
+					response: airPlaylistResponse,
+				};
+			}
+			return lastPlaylist?.modifiedAt ?? null;
+		} catch (error) {
+			debug('Cannot fetch last-modified header of SMIL', error);
+			return null;
+		}
+	}
+	const airGenFile: SMILFile = {
+		src: airGenerateUrl,
+		download: downloadSMIL,
+		fetchLastModified: fetchLastModifiedSMIL,
+	};
+
 	let smilFileContent: string = '';
 
 	// wait for successful download of SMIL file, if download or read from internal storage fails
@@ -60,15 +158,15 @@ async function main(internalStorageUnit: IStorageUnit, smilUrl: string, thisSos:
 	while (smilFileContent === '') {
 		try {
 			// download SMIL file if device has internet connection and smil file exists on remote server
-			if (!isNil(await files.fetchLastModified(smilFile.src))) {
+			if (!isNil(await fetchLastModifiedSMIL())) {
 				forceDownload = true;
-				downloadPromises = await files.parallelDownloadAllFiles(internalStorageUnit, [smilFile], FileStructure.rootFolder, forceDownload);
+				downloadPromises = await files.parallelDownloadAllFiles(internalStorageUnit, [airGenFile], FileStructure.rootFolder, forceDownload);
 				await Promise.all(downloadPromises);
 			}
 
 			smilFileContent = await thisSos.fileSystem.readFile({
 				storageUnit: internalStorageUnit,
-				filePath: `${FileStructure.rootFolder}/${getFileName(smilFile.src)}`,
+				filePath: smilLocalPath,
 			});
 
 			debug('SMIL file downloaded');
@@ -96,18 +194,18 @@ async function main(internalStorageUnit: IStorageUnit, smilUrl: string, thisSos:
 
 		// download and play intro file if exists ( image or video )
 		if (smilObject.intro.length > 0) {
-			await playlist.playIntro(smilObject, internalStorageUnit, smilUrl);
+			await playlist.playIntro(smilObject, internalStorageUnit, airGenerateUrl);
 		} else {
 			// no intro
 			debug('No intro element found');
 			downloadPromises = await files.prepareDownloadMediaSetup(internalStorageUnit, smilObject);
 			await Promise.all(downloadPromises);
 			debug('SMIL media files download finished');
-			await playlist.manageFilesAndInfo(smilObject, internalStorageUnit, smilUrl);
+			await playlist.manageFilesAndInfo(smilObject, internalStorageUnit, airGenerateUrl);
 		}
 
 		debug('Starting to process parsed smil file');
-		await playlist.processingLoop(internalStorageUnit, smilObject, smilFile);
+		await playlist.processingLoop(internalStorageUnit, smilObject, airGenFile);
 	} catch (err) {
 		debug('Unexpected error during xml parse: %O', err);
 		debug('Starting to play backup image');
@@ -123,7 +221,7 @@ async function main(internalStorageUnit: IStorageUnit, smilUrl: string, thisSos:
 	}
 }
 
-async function startSmil(smilUrl: string) {
+async function startAIR(airConfig: AIRConfig) {
 	const storageUnits = await sos.fileSystem.listStorageUnits();
 
 	// reference to persistent storage unit, where player stores all content
@@ -133,20 +231,9 @@ async function startSmil(smilUrl: string) {
 
 	debug('File structure created');
 
-	if (await files.fileExists(internalStorageUnit, createLocalFilePath(FileStructure.smilMediaInfo, FileStructure.smilMediaInfoFileName))) {
-		const fileContent = JSON.parse(await files.readFile(
-			internalStorageUnit, createLocalFilePath(FileStructure.smilMediaInfo, FileStructure.smilMediaInfoFileName)));
-
-		// delete mediaInfo file only in case that currently played smil is different from previous
-		if (!fileContent.hasOwnProperty(getFileName(smilUrl))) {
-			// delete mediaInfo file, so each smil has fresh start for lastModified tags for files
-			await files.deleteFile(internalStorageUnit, createLocalFilePath(FileStructure.smilMediaInfo, FileStructure.smilMediaInfoFileName));
-		}
-	}
-
 	while (true) {
 		try {
-			await main(internalStorageUnit, smilUrl, sos);
+			await main(internalStorageUnit, airConfig, sos);
 			debug('One smil iteration finished');
 		} catch (err) {
 			debug('Unexpected error : %O', err);
@@ -154,21 +241,23 @@ async function startSmil(smilUrl: string) {
 		}
 	}
 }
-// self invoking function to start smil processing if smilUrl is defined in sos.config via timings
+
+// self invoking function to start smil processing if defined in sos.config via timings
 (async() => {
 	await sos.onReady();
-	if (sos.config.smilUrl) {
-		debug('sOS is ready');
-		debug('Smil file url is: %s', sos.config.smilUrl);
-		await startSmil(sos.config.smilUrl);
-	}
-})();
+	debug('sOS is ready');
 
-// get values from form onSubmit and start processing
-const smilForm = <HTMLElement> document.getElementById('SMILUrlWrapper');
-smilForm.onsubmit = async function (event: Event) {
-	event.preventDefault();
-	const smilUrl = (<HTMLInputElement> document.getElementById('SMILUrl')).value;
-	debug('Smil file url is: %s', smilUrl);
-	await startSmil(smilUrl);
-};
+	if (!sos.config.authToken || !sos.config.playerId) {
+		throw new Error('SOS config authToken & playerId are required');
+	}
+
+	const airConfig: AIRConfig = {
+		baseUrl: sos.config.airBaseUrl || 'https://air.broadsign.com',
+		authToken: sos.config.authToken,
+		playerId: sos.config.playerId,
+		duration: sos.config.playerDuration || '180s',
+	};
+
+	debug('Broadsign AIR playlist config: %s', airConfig);
+	await startAIR(airConfig);
+})();
