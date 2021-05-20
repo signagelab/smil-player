@@ -34,6 +34,36 @@ interface AIRConfig {
 	authToken: string;
 }
 
+export async function proofOfPlay(token: string) {
+	const airProofOfPlayPath = `/playlist/v1/confirm_playback`;
+	const airProofOfPlayUrl = `${corsAnywhere}${airConfig.baseUrl}${airProofOfPlayPath}`;
+	const headers = {
+		'Authorization': `Bearer ${airConfig.authToken}`,
+		'Content-Type': 'application/json',
+		'Accept': 'application/json',
+	};
+	const body = JSON.stringify({
+		player_identifier: airConfig.playerId,
+		confirmed_items: [
+			{
+				playlist_item_token: token,
+				custom_data: {},
+			},
+		],
+	});
+	const resp = await fetch(
+		airProofOfPlayUrl,
+		{
+			method: 'POST',
+			headers,
+			body,
+		},
+	);
+	if (!resp.ok) {
+		throw new Error(`Cannot proof of play ${airProofOfPlayUrl}: ${await resp.text()}`);
+	}
+}
+
 export async function main(
 	internalStorageUnit: IStorageUnit,
 	thisSos: FrontApplet,

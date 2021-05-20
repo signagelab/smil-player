@@ -48,7 +48,7 @@ import { parseSmilSchedule } from './tools/wallclockTools';
 import { createDomElement, createHtmlElement } from './tools/htmlTools';
 import { setDefaultAwait, setElementDuration } from './tools/scheduleTools';
 import { createPriorityObject } from './tools/priorityTools';
-import { main } from "../../index";
+import { main, proofOfPlay } from "../../index";
 
 export class Playlist {
 	private checkFilesLoop: boolean = true;
@@ -1506,6 +1506,9 @@ export class Playlist {
 			// 	break;
 			default:
 				debug(`Sorry, we are out of ${key}.`);
+		}
+		if (!(value instanceof Array) && value['data-token']) {
+			proofOfPlay(value['data-token']); // do not wait on response
 		}
 	}
 
