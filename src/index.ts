@@ -25,6 +25,7 @@ const files = new Files(sos);
 
 const debug = Debug('@signageos/smil-player:main');
 const playlist = new Playlist(sos, files);
+let airConfig: AIRConfig;
 
 interface AIRConfig {
 	baseUrl: string;
@@ -33,9 +34,8 @@ interface AIRConfig {
 	authToken: string;
 }
 
-async function main(
+export async function main(
 	internalStorageUnit: IStorageUnit,
-	airConfig: AIRConfig,
 	thisSos: FrontApplet,
 ) {
 	const airGeneratePath = `/playlist/v1/generate`;
@@ -219,7 +219,7 @@ async function main(
 	}
 }
 
-async function startAIR(airConfig: AIRConfig) {
+async function startAIR() {
 	const storageUnits = await sos.fileSystem.listStorageUnits();
 
 	// reference to persistent storage unit, where player stores all content
@@ -231,7 +231,7 @@ async function startAIR(airConfig: AIRConfig) {
 
 	while (true) {
 		try {
-			await main(internalStorageUnit, airConfig, sos);
+			await main(internalStorageUnit, sos);
 			debug('One smil iteration finished');
 		} catch (err) {
 			debug('Unexpected error : %O', err);
@@ -249,13 +249,13 @@ async function startAIR(airConfig: AIRConfig) {
 		throw new Error('SOS config authToken & playerId are required');
 	}
 
-	const airConfig: AIRConfig = {
+	airConfig = {
 		baseUrl: sos.config.airBaseUrl || 'https://air.broadsign.com',
 		authToken: sos.config.authToken,
 		playerId: sos.config.playerId,
-		duration: sos.config.playerDuration || '180s',
+		duration: sos.config.playerDuration || '600s',
 	};
 
 	debug('Broadsign AIR playlist config: %s', airConfig);
-	await startAIR(airConfig);
+	await startAIR();
 })();

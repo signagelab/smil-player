@@ -227,7 +227,7 @@ export class Playlist {
 					}
 				}
 			}
-			await main(internalStorageUnit, smilFile.src, this.sos);
+			await main(internalStorageUnit, this.sos);
 		})());
 
 		promises.push((async () => {
