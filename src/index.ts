@@ -17,7 +17,6 @@ import { getFileName } from './components/files/tools';
 import { FileStructure } from './enums/fileEnums';
 import { SMILFile, SMILFileObject } from './models/filesModels';
 import { generateBackupImagePlaylist, getDefaultRegion, sleep } from './components/playlist/tools/generalTools';
-import { resetBodyContent } from './components/playlist/tools/htmlTools';
 import { convertAIRToSMIL } from '@signageos/broadsign-air-to-smil-convertor';
 import { corsAnywhere } from '../config/parameters';
 import { AIRPlaylistResponse } from '@signageos/broadsign-air-to-smil-convertor/dist/node/AIR/playlist';
@@ -25,6 +24,7 @@ import { Duration } from '@signageos/broadsign-air-to-smil-convertor/dist/node/A
 const files = new Files(sos);
 
 const debug = Debug('@signageos/smil-player:main');
+const playlist = new Playlist(sos, files);
 
 interface AIRConfig {
 	baseUrl: string;
@@ -68,13 +68,11 @@ async function main(
 		return json;
 	};
 
-	const playlist = new Playlist(sos, files);
 	// enable internal endless loops for playing media
 	playlist.disableLoop(false);
 	// enable endless loop for checking files updated
 	playlist.setCheckFilesLoop(true);
-
-	resetBodyContent();
+	playlist.setPlaylistVersion();
 
 	let downloadPromises: Promise<Function[]>[] = [];
 	let forceDownload = false;

@@ -48,10 +48,11 @@ import { parseSmilSchedule } from './tools/wallclockTools';
 import { createDomElement, createHtmlElement } from './tools/htmlTools';
 import { setDefaultAwait, setElementDuration } from './tools/scheduleTools';
 import { createPriorityObject } from './tools/priorityTools';
+import { main } from "../../index";
 
 export class Playlist {
 	private checkFilesLoop: boolean = true;
-	private cancelFunction: boolean = false;
+	private cancelFunction: boolean[] = [];
 	private readonly playerName: string;
 	private readonly playerId: string;
 	private files: Files;
@@ -62,6 +63,8 @@ export class Playlist {
 	private promiseAwaiting: any = {};
 	private currentlyPlayingPriority: CurrentlyPlayingPriority = {};
 	private triggersEndless: any = {};
+	private playlistVersion: number = 0;
+	// private update = true;
 
 	constructor(sos: FrontApplet, files: Files) {
 		this.sos = sos;
@@ -75,17 +78,22 @@ export class Playlist {
 		this.checkFilesLoop = checkFilesLoop;
 	}
 
+	public setPlaylistVersion() {
+		this.playlistVersion += 1;
+	}
+
 	// disables endless loop for media playing
 	public disableLoop(value: boolean) {
-		this.cancelFunction = value;
+		this.cancelFunction.push(value);
 	}
 
 	/**
 	 * runs function given as parameter in endless loop
 	 * @param fn - Function
+	 * @param version
 	 */
-	public runEndlessLoop = async (fn: Function) => {
-		while (!this.cancelFunction) {
+	public runEndlessLoop = async (fn: Function, version: number = 0) => {
+		while (!this.cancelFunction[version]) {
 			try {
 				await fn();
 			} catch (err) {
@@ -219,25 +227,29 @@ export class Playlist {
 					}
 				}
 			}
+			await main(internalStorageUnit, smilFile.src, this.sos);
 		})());
 
 		promises.push((async () => {
 			// endless processing of smil playlist
+			const version = this.playlistVersion;
 			await this.runEndlessLoop(async () => {
 				try {
 					await this.processPlaylist(smilObject.playlist);
-					debug('One smil playlist iteration finished');
+					debug('One smil playlist iteration finished ' + version);
+					debug('One smil playlist iteration finished ' + JSON.stringify(this.cancelFunction));
 				} catch (err) {
 					debug('Unexpected error during playlist processing: %O', err);
 					await sleep(5000);
 				}
-			});
+				console.log('playlist Terminated');
+			},                        version);
 		})());
 
-		promises.push((async () => {
-			// triggers processing
-			await this.watchTriggers(smilObject);
-		})());
+		// promises.push((async () => {
+		// 	// triggers processing
+		// 	await this.watchTriggers(smilObject);
+		// })());
 
 		await Promise.all(promises);
 	}
@@ -683,9 +695,10 @@ export class Playlist {
 			// when endTime is not set, play indefinitely
 			if (endTime === 0) {
 				let newParent = generateParentId(key, value);
-				await this.runEndlessLoop(async () => {
-					await this.processPlaylist(value, newParent, endTime, priorityObject);
-				});
+				// await this.runEndlessLoop(async () => {
+				// 	await this.processPlaylist(value, newParent, endTime, priorityObject);
+				// });
+				await this.processPlaylist(value, newParent, endTime, priorityObject);
 				// play N-times, is determined by higher level tag, because this one has repeatCount=indefinite
 			} else if (endTime > 0 && endTime <= 1000) {
 				let newParent = generateParentId(key, value);
@@ -804,7 +817,7 @@ export class Playlist {
 	}
 
 	private getCancelFunction(): boolean {
-		return this.cancelFunction;
+		return this.cancelFunction[this.cancelFunction.length - 1];
 	}
 
 	private checkRegionsForCancellation = async (
@@ -934,6 +947,10 @@ export class Playlist {
 	): Promise<void> => {
 		try {
 			let element = <HTMLElement> document.getElementById(<string> value.id);
+
+			if (this.getCancelFunction()) {
+				return;
+			}
 
 			// set correct duration
 			const parsedDuration: number = setElementDuration(value.dur);
@@ -1143,8 +1160,8 @@ export class Playlist {
 		// playlist was already stopped/paused during await
 		if (get(this.currentlyPlayingPriority, `${regionInfo.regionName}`)[currentIndex].player.stop
 			|| get(this.currentlyPlayingPriority, `${regionInfo.regionName}`)[currentIndex].player.contentPause !== 0
-			|| get(this.currentlyPlayingPriority, `${regionInfo.regionName}`)[currentIndex].behaviour === 'pause'
-			|| this.getCancelFunction()) {
+			|| get(this.currentlyPlayingPriority, `${regionInfo.regionName}`)[currentIndex].behaviour === 'pause') {
+			// || this.getCancelFunction()) {
 			debug(
 				'Playlist was stopped/paused by higher priority during await: %O', this.currentlyPlayingPriority[priorityRegionName][currentIndex],
 			);
@@ -1179,6 +1196,10 @@ export class Playlist {
 			// TODO: implement check to sos library
 			if (video.localFilePath === '') {
 				debug('Video: %O has empty localFilepath: %O', video);
+				return;
+			}
+
+			if (this.getCancelFunction()) {
 				return;
 			}
 
@@ -1256,6 +1277,11 @@ export class Playlist {
 					}
 
 					debug('Playing video finished: %O', video);
+					// if (this.update) {
+					// 	this.disableLoop(true);
+					// 	this.setCheckFilesLoop(false);
+					// 	this.update = false;
+					// }
 
 					// stopped because of higher priority playlist will start to play
 					if (this.currentlyPlayingPriority[regionInfo.regionName][index].player.stop) {

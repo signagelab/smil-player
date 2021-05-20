@@ -28,12 +28,12 @@
 
         <par> <!-- 1 -->
 
-            <seq end="__prefetchEnd.endEvent">
-                <seq repeatCount="indefinite">
-                    <!-- Play waiting prompt -->
-                    <video src="https://butikstv.centrumkanalen.com/play/media/ladd/portrait.mp4" />
-                </seq>
-            </seq>
+<!--            <seq end="__prefetchEnd.endEvent">-->
+<!--                <seq repeatCount="indefinite">-->
+<!--                    &lt;!&ndash; Play waiting prompt &ndash;&gt;-->
+<!--                    <video src="https://butikstv.centrumkanalen.com/play/media/ladd/portrait.mp4" />-->
+<!--                </seq>-->
+<!--            </seq>-->
 
 
 
@@ -49,11 +49,20 @@
                 <seq id="__prefetchEnd" dur="1s"/>
             </seq>
 
-            <!-- Spellistan startar -->
-            <seq begin="__prefetchEnd.endEvent" repeatCount="indefinite">
-                <video src="https://butikstv.centrumkanalen.com/play/render/image/ec68be28e3250fb4245730b47d679cee_md5_BTVRENDER18027.mp4" id="annons0" fit="hidden" ><param name="cacheControl" value="auto"/></video>
-                <img src="https://butikstv.centrumkanalen.com/play/render/image/c5314f7a4b14775ec6d720725bc5198e_md5_18032.png" id="annons1" dur="5s" fit="hidden" region="video" expr="4=adapi-weekday()"><param name="cacheControl" value="auto"/></img>
-            </seq> <!-- Spellistan slut -->
+            <seq repeatCount="indefinite">
+                <video src="https://static.signageos.io/assets/video-test-1_e07fc21a7a72e3d33478243bd75d7743.mp4" id="annons0" fit="hidden" region="video">
+                    <param name="cacheControl" value="auto" />
+                </video>
+                <img src="https://signageos-demo.s3.eu-central-1.amazonaws.com/smil/zones/files/img_1.jpg" id="annons1" dur="5s" fit="hidden" region="video">
+                    <param name="cacheControl" value="auto" />
+                </img>
+                <video src="https://static.signageos.io/assets/video-test-2_e2ffa51f6a4473b815f39e7fb39239da.mp4" id="annons0" fit="hidden" region="video">
+                    <param name="cacheControl" value="auto" />
+                </video>
+                <img src="https://signageos-demo.s3.eu-central-1.amazonaws.com/smil/zones/files/img_2.jpg" id="annons1" dur="5s" fit="hidden" region="video">
+                    <param name="cacheControl" value="auto" />
+                </img>
+            </seq>
 
         </par> <!-- /1 -->
     </body>
