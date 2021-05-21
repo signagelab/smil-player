@@ -211,7 +211,7 @@ export async function main(
 			if (isNil(sos.config.backupImageUrl)) {
 				backupPlaylist.seq.img.localFilePath = backupImageUrl;
 			}
-			await playlist.processPlaylist(backupPlaylist);
+			await playlist.processPlaylist(backupPlaylist, 0);
 			await sleep(SMILEnums.defaultDownloadRetry * 1000);
 		}
 	}
@@ -245,7 +245,7 @@ export async function main(
 		if (isNil(sos.config.backupImageUrl)) {
 			backupPlaylist.seq.img.localFilePath = backupImageUrl;
 		}
-		await playlist.processPlaylist(backupPlaylist);
+		await playlist.processPlaylist(backupPlaylist, 0);
 	}
 }
 
