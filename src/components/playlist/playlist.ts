@@ -11,7 +11,7 @@ import Nexmosphere from '@signageos/front-applet-extension-nexmosphere/es6';
 
 import { defaults as config } from '../../../config/parameters';
 import { IFile, IStorageUnit, IVideoFile } from '@signageos/front-applet/es6/FrontApplet/FileSystem/types';
-import { getFileName, createVersionedUrl, copyQueryParameters } from '../files/tools';
+import { getFileName, createVersionedUrl, copyQueryParameters, getProtocol } from '../files/tools';
 import { Files } from '../files/files';
 import { RfidAntennaEvent } from '@signageos/front-applet/es6/Sensors/IRfidAntenna';
 import { SMILEnums } from '../../enums/generalEnums';
@@ -50,6 +50,7 @@ import { parseSmilSchedule } from './tools/wallclockTools';
 import { createDomElement, createHtmlElement, removeTransitionCss, setTransitionCss, addEventOnTriggerWidget } from './tools/htmlTools';
 import { findDuration, setDefaultAwait, setElementDuration } from './tools/scheduleTools';
 import { createPriorityObject } from './tools/priorityTools';
+import { StreamEnums } from "../../enums/mediaEnums";
 
 export class Playlist {
 	private checkFilesLoop: boolean = true;
@@ -298,8 +299,12 @@ export class Playlist {
 					elem.localFilePath = mediaFile ? mediaFile.localUri : '';
 
 					// check if video has duration defined due to webos bug
-					if (key.startsWith('video')) {
-						elem.fullVideoDuration = mediaFile.videoDurationMs ? mediaFile.videoDurationMs : SMILEnums.defaultVideoDuration;
+					if (key.startsWith('video') ) {
+						if (isNil(elem.isStream)) {
+							elem.fullVideoDuration = mediaFile.videoDurationMs ? mediaFile.videoDurationMs : SMILEnums.defaultVideoDuration;
+						} else {
+							elem.protocol = getProtocol(elem.src);
+						}
 					}
 					elem.regionInfo = getRegionInfo(region, elem.region);
 					extractAdditionalInfo(elem);
@@ -1002,6 +1007,8 @@ export class Playlist {
 		this.currentlyPlaying[regionInfo.regionName].player = 'stop';
 
 		const video = <SMILVideo> this.currentlyPlaying[regionInfo.regionName];
+		const sosVideoObject = isNil(video.isStream) ? this.sos.video : this.sos.stream;
+
 		let localRegionInfo = video.regionInfo;
 		// cancelling trigger, have to find correct nested region
 		if (localRegionInfo.regionName !== regionInfo.regionName) {
@@ -1012,7 +1019,7 @@ export class Playlist {
 			});
 		}
 
-		await this.sos.video.stop(
+		await sosVideoObject.stop(
 			video.localFilePath,
 			localRegionInfo.left,
 			localRegionInfo.top,
@@ -1326,9 +1333,10 @@ export class Playlist {
 		video: SMILVideo, priorityRegionName: string, currentIndex: number, previousPlayingIndex: number, endTime: number, isLast: boolean,
 		) => {
 		const taskStartDate = moment().toDate();
+
 		try {
 			// TODO: implement check to sos library
-			if (video.localFilePath === '') {
+			if (video.localFilePath === '' && isNil(video.isStream)) {
 				debug('Video: %O has empty localFilepath: %O', video);
 				return;
 			}
@@ -1344,20 +1352,20 @@ export class Playlist {
 			const parentRegion = video.regionInfo;
 			let regionInfo = await this.handleTriggers(video);
 
+			const sosVideoObject = isNil(video.isStream) ? this.sos.video : this.sos.stream;
+			const options = isNil(video.isStream) ? config.videoOptions : video.protocol;
+			const videoPath = isNil(video.isStream) ? video.localFilePath : video.src;
+			const params: [string, number, number, number, number, any]
+				= [videoPath, regionInfo.left, regionInfo.top, regionInfo.width, regionInfo.height, options];
+
 			const index = getIndexOfPlayingMedia(this.currentlyPlayingPriority[regionInfo.regionName]);
 
 			// prepare if video is not same as previous one played
 			if (get(this.currentlyPlaying[regionInfo.regionName], 'src') !== video.src
-				&& get(this.videoPreparing[regionInfo.regionName], 'src') !== video.src) {
+				&& get(this.videoPreparing[regionInfo.regionName], 'src') !== video.src
+				&& video.protocol !== StreamEnums.internal) {
 				debug('Preparing video: %O', video);
-				await this.sos.video.prepare(
-					video.localFilePath,
-					regionInfo.left,
-					regionInfo.top,
-					regionInfo.width,
-					regionInfo.height,
-					config.videoOptions,
-				);
+				await sosVideoObject.prepare(...params);
 			}
 
 			this.videoPreparing[regionInfo.regionName] = video;
@@ -1369,57 +1377,82 @@ export class Playlist {
 
 			this.promiseAwaiting[regionInfo.regionName].promiseFunction! = [(async () => {
 				try {
-					await this.sos.video.play(
-						video.localFilePath,
-						regionInfo.left,
-						regionInfo.top,
-						regionInfo.width,
-						regionInfo.height,
-					);
+					let promiseRaceArray = [];
 
-					await this.checkRegionsForCancellation(video, regionInfo, parentRegion);
+					if (isNil(video.isStream)) {
+						params.pop();
+						await sosVideoObject.play(...params);
+					} else {
+						await this.checkRegionsForCancellation(video, regionInfo, parentRegion);
 
-					this.setCurrentlyPlaying(video, 'video', regionInfo.regionName);
+						this.setCurrentlyPlaying(video, 'video', regionInfo.regionName);
 
-					debug('Starting playing video onceEnded function - single video: %O', video);
+						// if video has specified duration in smil file, cancel it after given duration passes
+						if (get(video, 'dur', SMILEnums.defaultVideoDuration) !== SMILEnums.defaultVideoDuration) {
+							const parsedDuration: number = setElementDuration(video.dur!);
+							debug('Got dur: %s for stream: %O', parsedDuration, video);
+							promiseRaceArray.push(sleep(parsedDuration));
+						}
 
-					const promiseRaceArray = [];
-					promiseRaceArray.push(this.sos.video.onceEnded(
-						video.localFilePath,
-						regionInfo.left,
-						regionInfo.top,
-						regionInfo.width,
-						regionInfo.height,
-					));
+						// remove protocol parameter for Video Inputs and Internal Ports
+						if (video.protocol === StreamEnums.internal) {
+							params.pop();
+						}
 
-					// due to webos bug when onceEnded function never resolves, add videoDuration + 1000ms function to resolve
-					// so playback can continue
-					// TODO: fix in webos app
-					if (get(video, 'fullVideoDuration', SMILEnums.defaultVideoDuration) !== SMILEnums.defaultVideoDuration) {
-						debug('Got fullVideoDuration: %s for video: %O', video.fullVideoDuration!, video);
-						promiseRaceArray.push(sleep(video.fullVideoDuration! + SMILEnums.videoDurationOffset));
+						promiseRaceArray.push(await sosVideoObject.play(...params));
+
+						try {
+							await Promise.race(promiseRaceArray);
+						} catch (err) {
+							debug('Unexpected error: %O during single stream playback play at stream: %O', err, video);
+						}
 					}
 
-					// if video has specified duration in smil file, cancel it after given duration passes
-					if (get(video, 'dur', SMILEnums.defaultVideoDuration) !== SMILEnums.defaultVideoDuration) {
-						const parsedDuration: number = setElementDuration(video.dur!);
-						debug('Got dur: %s for video: %O', parsedDuration, video);
-						promiseRaceArray.push(sleep(parsedDuration));
-					}
+					// streams does not have onceEnded method
+					if (isNil(video.isStream)) {
+						await this.checkRegionsForCancellation(video, regionInfo, parentRegion);
 
-					try {
-						await Promise.race(promiseRaceArray);
-					} catch (err) {
-						debug('Unexpected error: %O during single video playback onceEnded at video: %O', err, video);
-					}
+						this.setCurrentlyPlaying(video, 'video', regionInfo.regionName);
 
+						debug('Starting playing video onceEnded function - single video: %O', video);
+
+						promiseRaceArray.push(this.sos.video.onceEnded(
+							video.localFilePath,
+							regionInfo.left,
+							regionInfo.top,
+							regionInfo.width,
+							regionInfo.height,
+						));
+
+						// due to webos bug when onceEnded function never resolves, add videoDuration + 1000ms function to resolve
+						// so playback can continue
+						// TODO: fix in webos app
+						if (get(video, 'fullVideoDuration', SMILEnums.defaultVideoDuration) !== SMILEnums.defaultVideoDuration) {
+							debug('Got fullVideoDuration: %s for video: %O', video.fullVideoDuration!, video);
+							promiseRaceArray.push(sleep(video.fullVideoDuration! + SMILEnums.videoDurationOffset));
+						}
+
+						// if video has specified duration in smil file, cancel it after given duration passes
+						if (get(video, 'dur', SMILEnums.defaultVideoDuration) !== SMILEnums.defaultVideoDuration) {
+							const parsedDuration: number = setElementDuration(video.dur!);
+							debug('Got dur: %s for video: %O', parsedDuration, video);
+							promiseRaceArray.push(sleep(parsedDuration));
+						}
+
+						try {
+							await Promise.race(promiseRaceArray);
+						} catch (err) {
+							debug('Unexpected error: %O during single video playback onceEnded at video: %O', err, video);
+						}
+					}
+					await sleep(10000);
 					debug('Playing video finished: %O', video);
 
 					await this.files.sendMediaReport(video, taskStartDate, 'video');
 
 					// stopped because of higher priority playlist will start to play
-					if (this.currentlyPlayingPriority[regionInfo.regionName][index].player.stop) {
-						await this.sos.video.stop(
+					if (get(this.currentlyPlayingPriority[regionInfo.regionName][index], 'player.stop', false)) {
+						await sosVideoObject.stop(
 							video.localFilePath,
 							video.regionInfo.left,
 							video.regionInfo.top,
@@ -1434,7 +1467,7 @@ export class Playlist {
 						this.currentlyPlayingPriority[regionInfo.regionName] = this.currentlyPlayingPriority[parentRegion.regionName];
 					}
 
-					while (!isNil(this.currentlyPlayingPriority[regionInfo.regionName])
+					while (!isNil(this.currentlyPlayingPriority[regionInfo.regionName][index])
 					&& this.currentlyPlayingPriority[regionInfo.regionName][index].player.contentPause !== 0) {
 						video.playing = false;
 						await sleep(100);

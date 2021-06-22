@@ -1,12 +1,13 @@
 import Debug from 'debug';
 import * as path from 'path';
 import * as querystring from 'querystring';
-import * as URL from 'url';
+import * as URLVar from 'url';
 import get = require('lodash/get');
 import { corsAnywhere } from '../../../../config/parameters';
 import { MediaInfoObject, MergedDownloadList } from '../../../models/filesModels';
 import { ItemType } from "../../../models/reportingModels";
 import { checksumString } from './checksum';
+import { FileStructure } from "../../../enums/fileEnums";
 
 export const debug = Debug('@signageos/smil-player:filesModule');
 
@@ -15,15 +16,21 @@ export function getRandomInt(max: number) {
 }
 
 export function isRelativePath(filePath: string) {
-	const parsedUrl = URL.parse(filePath);
+	const parsedUrl = URLVar.parse(filePath);
 	return !parsedUrl.host;
+}
+
+export function getProtocol(url: string): string {
+	let protocol = new URL(url).protocol.slice(0, -1);
+	protocol = protocol.toLowerCase() === 'https' ? 'http' : protocol;
+	return protocol;
 }
 
 export function getFileName(url: string) {
 	if (!url) {
 		return url;
 	}
-	const parsedUrl = URL.parse(url);
+	const parsedUrl = URLVar.parse(url);
 	const filePathChecksum = parsedUrl.host ? `_${checksumString(url, 8)}` : '';
 	const fileName = path.basename(parsedUrl.pathname ?? url);
 	const sanitizedExtname = path.extname(parsedUrl.pathname ?? url).replace(/[^\w\.\-]+/gi, '').substr(0, 10);
@@ -42,7 +49,7 @@ export function createDownloadPath(sourceUrl: string): string {
 }
 
 export function createVersionedUrl(sourceUrl: string): string {
-	const parsedUrl = URL.parse(sourceUrl, true);
+	const parsedUrl = URLVar.parse(sourceUrl, true);
 	const searchLength = parsedUrl.search?.length ?? 0;
 	const urlWithoutSearch = sourceUrl.substr(0, sourceUrl.length - searchLength);
 	parsedUrl.query.__smil_version = getRandomInt(1000000).toString();
@@ -50,8 +57,8 @@ export function createVersionedUrl(sourceUrl: string): string {
 }
 
 export function copyQueryParameters(fromUrl: string, toUrl: string) {
-	const parsedFromUrl = URL.parse(fromUrl, true);
-	const parsedToUrl = URL.parse(toUrl, true);
+	const parsedFromUrl = URLVar.parse(fromUrl, true);
+	const parsedToUrl = URLVar.parse(toUrl, true);
 	const searchLength = parsedToUrl.search?.length ?? 0;
 	const toUrlWithoutSearch = toUrl.substr(0, toUrl.length - searchLength);
 	Object.assign(parsedToUrl.query, parsedFromUrl.query);
@@ -95,4 +102,9 @@ export function createSourceReportObject(localFilePath: string, fileSrc: string,
 		uri: fileSrc,
 		localUri: localFilePath,
 	};
+}
+
+export function shouldNotDownload(localFilePath: string, file: MergedDownloadList): boolean {
+	return (localFilePath === FileStructure.widgets && getFileName(file.src).indexOf('.wgt') === -1)
+		|| (localFilePath === FileStructure.videos && file.hasOwnProperty('isStream'));
 }
