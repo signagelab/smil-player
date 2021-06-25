@@ -1,33 +1,32 @@
 <smil>
     <head>
-        <meta http-equiv="refresh" content="30"/>
+        <!-- SMIL FILE GENERATED AT 2021-06-22T07:32:21.430Z (UTC) -->
+        <meta http-equiv="refresh" content="60"/>
         <layout>
             <root-layout width="1920" height="1080" backgroundColor="#000000"/>
-            <region regionName="ckmusyw120204p1mhosi6hyja" left="0" top="0" width="1920" height="1080" z-index="1" backgroundColor="#000000"/>
+            <region regionName="ckojqvur20091odmh6xifk0ua" left="0" top="0" width="1920" height="1080" z-index="1" backgroundColor="#000000"/>
         </layout>
     </head>
     <body>
         <par>
             <seq end="__prefetchEnd.endEvent">
                 <seq repeatCount="indefinite">
-                    <img src="https://signagelab-alfa-space.fra1.digitaloceanspaces.com/environment/production/accounts-data/ckjsfjnpr205320lqtc08vv3z/2021/01/ckju2zzo400050ymp0msze3m0.jpeg" dur="5s" fit="fill"/>
+                    <img src="https://signagelab-alfa-space.fra1.cdn.digitaloceanspaces.com/global/smil-placeholders/loading-horizontal.png" dur="5s" fit="fill"/>
                 </seq>
             </seq>
             <par begin="__prefetchEnd.endEvent" repeatCount="indefinite">
                 <par>
                     <seq repeatCount="indefinite">
-                        <excl>
-                            <priorityClass>
-                                <!-- START [GalleryModule] LB_Nisa_SL_1 (ckpgtxq8012138271zldl6gn3q5o) -->
-                                <seq repeatCount="1">
-                                    <img src="https://signagelab-alfa-space.fra1.digitaloceanspaces.com/environment/production/accounts-data/ckjsfjnpr205320lqtc08vv3z/2021/06/ckpe4s6sq000g12pig6kb1pks.jpeg" dur="10s" fit="fill" region="ckmusyw120204p1mhosi6hyja"/>
-                                    <img src="https://signagelab-alfa-space.fra1.digitaloceanspaces.com/environment/production/accounts-data/ckjsfjnpr205320lqtc08vv3z/2021/06/ckpe4rbnv000e12pi3e8sggr8.jpeg" dur="10s" fit="fill" region="ckmusyw120204p1mhosi6hyja"/>
-                                    <img src="https://signagelab-alfa-space.fra1.digitaloceanspaces.com/environment/production/accounts-data/ckjsfjnpr205320lqtc08vv3z/2021/06/ckpe4qtyu000d12pi3zx24g68.jpeg" dur="10s" fit="fill" region="ckmusyw120204p1mhosi6hyja"/>
-                                    <img src="https://signagelab-alfa-space.fra1.digitaloceanspaces.com/environment/production/accounts-data/ckjsfjnpr205320lqtc08vv3z/2021/06/ckpe49uf1000612pi34x3huqe.jpeg" dur="10s" fit="fill" region="ckmusyw120204p1mhosi6hyja"/>
-                                </seq>
-                                <!-- END [GalleryModule] LB_Nisa_SL_1 (ckpgtxq8012138271zldl6gn3q5o) -->
-                            </priorityClass>
-                        </excl>
+                        <!-- START [WebsiteModule] shipm (ckq2ag8je13061zl14654pwgz) -->
+                        <seq repeatCount="1">
+                            <ref src="https://metabase-wh.shipmonk.cloud/public/dashboard/21c2a9ea-bec1-4779-a0aa-e17c06cc11b8" type="text/html" dur="15s" region="ckojqvur20091odmh6xifk0ua"/>
+                        </seq>
+                        <!-- END [WebsiteModule] shipm (ckq2ag8je13061zl14654pwgz) -->
+                        <!-- START [WeatherModule] Počasí (ckpxxmnol20451zocafn93580) -->
+                        <seq repeatCount="1">
+                            <ref src="https://my.signagelab.com/modules/weather.wgt?appUrl=https%3A%2F%2Fmy.signagelab.com&amp;campaignId=ckpxxmnol20451zocafn93580&amp;deviceId=ckp2nudyg39451zkoqrwvww0r&amp;hash=0b4713f6d372c673bb306f61479d9c00" type="application/widget" dur="15s" region="ckojqvur20091odmh6xifk0ua"/>
+                        </seq>
+                        <!-- END [WeatherModule] Počasí (ckpxxmnol20451zocafn93580) -->
                     </seq>
                 </par>
             </par>

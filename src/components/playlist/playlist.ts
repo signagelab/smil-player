@@ -919,6 +919,7 @@ export class Playlist {
 	private checkRegionsForCancellation = async (
 		element: SMILVideo | SosHtmlElement, regionInfo: RegionAttributes, parentRegion: RegionAttributes,
 		) => {
+		console.log('checking cancel -------------------------');
 		// cancel element played in default region
 		if (get(this.currentlyPlaying[SMILEnums.defaultRegion], 'src') !== element.src
 			&& get(this.currentlyPlaying[SMILEnums.defaultRegion], 'playing')) {
@@ -1008,6 +1009,7 @@ export class Playlist {
 
 		const video = <SMILVideo> this.currentlyPlaying[regionInfo.regionName];
 		const sosVideoObject = isNil(video.isStream) ? this.sos.video : this.sos.stream;
+		const videoElement = isNil(video.isStream) ? 'video' : 'stream';
 
 		let localRegionInfo = video.regionInfo;
 		// cancelling trigger, have to find correct nested region
@@ -1027,7 +1029,7 @@ export class Playlist {
 			localRegionInfo.height,
 		);
 		video.playing = false;
-		debug('previous video stopped');
+		debug(`previous ${videoElement} stopped`);
 	}
 
 	/**
@@ -1399,7 +1401,20 @@ export class Playlist {
 							params.pop();
 						}
 
-						promiseRaceArray.push(await sosVideoObject.play(...params));
+						await sosVideoObject.play(...params);
+
+						// promiseRaceArray.push(await sosVideoObject.play(...params));
+						promiseRaceArray.push(new Promise((resolve, reject) => {
+							this.sos.stream.onDisconnected((event) => {
+								debug('Stream: %O emitted onDisconnected event: %O', video, event);
+								resolve();
+							});
+
+							this.sos.stream.onError((event) => {
+								debug('Stream: %O emitted onError event: %O', video, event);
+								reject();
+							});
+						}));
 
 						try {
 							await Promise.race(promiseRaceArray);
@@ -1410,6 +1425,7 @@ export class Playlist {
 
 					// streams does not have onceEnded method
 					if (isNil(video.isStream)) {
+						// TODO: u streamu blbne asi cancel, zrusi to az dalsi stream, jinak to hraje pres video i image
 						await this.checkRegionsForCancellation(video, regionInfo, parentRegion);
 
 						this.setCurrentlyPlaying(video, 'video', regionInfo.regionName);
@@ -1445,7 +1461,7 @@ export class Playlist {
 							debug('Unexpected error: %O during single video playback onceEnded at video: %O', err, video);
 						}
 					}
-					await sleep(10000);
+
 					debug('Playing video finished: %O', video);
 
 					await this.files.sendMediaReport(video, taskStartDate, 'video');
