@@ -21,13 +21,16 @@ import { resetBodyContent, setTransitionsDefinition } from './components/playlis
 
 const files = new Files(sos);
 const debug = Debug('@signageos/smil-player:main');
+const playlist = new Playlist(sos, files);
 
-async function main(internalStorageUnit: IStorageUnit, smilUrl: string, thisSos: FrontApplet) {
-	const playlist = new Playlist(sos, files);
-	// enable internal endless loops for playing media
+export async function main(internalStorageUnit: IStorageUnit, smilUrl: string, thisSos: FrontApplet) {
+	console.log('STARTING SMIL');
+	// await sleep(20000);
+	// const playlist = new Playlist(sos, files);
+
 	playlist.disableLoop(false);
 	// enable endless loop for checking files updated
-	playlist.setCheckFilesLoop(true);
+	// playlist.setCheckFilesLoop(true);
 
 	const smilFile: SMILFile = {
 		src: smilUrl,
@@ -37,7 +40,6 @@ async function main(internalStorageUnit: IStorageUnit, smilUrl: string, thisSos:
 
 	// set smilUrl in files instance ( links to files might me in media/file.mp4 format )
 	files.setSmilUrl(smilUrl);
-	resetBodyContent();
 
 	try {
 		if (!isNil(sos.config.backupImageUrl) && !isNil(await files.fetchLastModified(sos.config.backupImageUrl))) {
@@ -98,6 +100,18 @@ async function main(internalStorageUnit: IStorageUnit, smilUrl: string, thisSos:
 
 			// smil processing ok, end loop
 			xmlOkParsed = true;
+
+			console.log(playlist.getCheckFilesLoop() + ' HEREEEEE');
+			// enable internal endless loops for playing media
+			if (!playlist.getCheckFilesLoop()) {
+				console.log(playlist.getPlaylistVersion() + ' HEREEEEE');
+				if (playlist.getPlaylistVersion() > -1) {
+					console.log('cancelling version of playlist ' + playlist.getPlaylistVersion());
+					playlist.setCancelFunction(true, playlist.getPlaylistVersion());
+				}
+				playlist.setCheckFilesLoop(true);
+			}
+
 			debug('Starting to process parsed smil file');
 			await playlist.processingLoop(internalStorageUnit, smilObject, smilFile);
 
@@ -146,11 +160,21 @@ async function startSmil(smilUrl: string) {
 		}
 	}
 
+	resetBodyContent();
+
 	while (true) {
 		try {
+			const startVersion = playlist.getPlaylistVersion();
+			debug('One smil iteration finished START' + startVersion);
 			await main(internalStorageUnit, smilUrl, sos);
-			debug('One smil iteration finished');
+			const finishVersion = playlist.getPlaylistVersion();
+			debug('One smil iteration finished FINAL' + finishVersion);
+			if (startVersion < finishVersion) {
+				debug('Playlist ended and was replaced with new version of playlist');
+				break;
+			}
 		} catch (err) {
+			console.log('DIVNY');
 			debug('Unexpected error : %O', err);
 			await sleep(SMILEnums.defaultRefresh * 1000);
 		}
@@ -173,4 +197,5 @@ smilForm.onsubmit = async function (event: Event) {
 	const smilUrl = (<HTMLInputElement> document.getElementById('SMILUrl')).value;
 	debug('Smil file url is: %s', smilUrl);
 	await startSmil(smilUrl);
+	console.log('SMIL ENDED');
 };

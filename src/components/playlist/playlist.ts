@@ -49,10 +49,14 @@ import { parseSmilSchedule } from './tools/wallclockTools';
 import { createDomElement, createHtmlElement, removeTransitionCss, setTransitionCss, addEventOnTriggerWidget } from './tools/htmlTools';
 import { findDuration, setDefaultAwait, setElementDuration } from './tools/scheduleTools';
 import { createPriorityObject } from './tools/priorityTools';
+import { main } from "../../index";
+
+// let first = true;
+// let second = true;
 
 export class Playlist {
 	private checkFilesLoop: boolean = true;
-	private cancelFunction: boolean = false;
+	private cancelFunction: boolean[] = [];
 	private playingIntro: boolean = false;
 	private readonly playerName: string;
 	private readonly playerId: string;
@@ -64,6 +68,8 @@ export class Playlist {
 	private promiseAwaiting: any = {};
 	private currentlyPlayingPriority: CurrentlyPlayingPriority = {};
 	private triggersEndless: any = {};
+	private playlistVersion: number = -1;
+	// private update = true;
 
 	constructor(sos: FrontApplet, files: Files) {
 		this.sos = sos;
@@ -77,17 +83,39 @@ export class Playlist {
 		this.checkFilesLoop = checkFilesLoop;
 	}
 
+	public getCheckFilesLoop() {
+		return this.checkFilesLoop;
+	}
+
+	public setPlaylistVersion() {
+		this.playlistVersion += 1;
+		console.log(this.playlistVersion + '/////////////////////////');
+	}
+
+	public getPlaylistVersion() {
+		return this.playlistVersion;
+	}
+
+	public setCancelFunction(value: boolean, index: number) {
+		this.cancelFunction[index] = value;
+		console.log(this.cancelFunction.length);
+		console.log(this.cancelFunction);
+	}
+
 	// disables endless loop for media playing
 	public disableLoop(value: boolean) {
-		this.cancelFunction = value;
+		this.cancelFunction.push(value);
+		console.log(this.cancelFunction);
+		console.log('*****************');
 	}
 
 	/**
 	 * runs function given as parameter in endless loop
 	 * @param fn - Function
+	 * @param version
 	 */
-	public runEndlessLoop = async (fn: Function) => {
-		while (!this.cancelFunction) {
+	public runEndlessLoop = async (fn: Function, version: number = 0) => {
+		while (!this.cancelFunction[version]) {
 			try {
 				await fn();
 			} catch (err) {
@@ -188,11 +216,16 @@ export class Playlist {
 	 * @param smilFile - representation of actual SMIL file
 	 */
 	public processingLoop = async (
+		// @ts-ignore
 		internalStorageUnit: IStorageUnit,
 		smilObject: SMILFileObject,
+		// @ts-ignore
 		smilFile: SMILFile,
 	): Promise<void> => {
 		const promises = [];
+		this.setPlaylistVersion();
+		const version = this.playlistVersion;
+
 		promises.push((async () => {
 			while (this.checkFilesLoop) {
 				debug('Prepare ETag check for smil media files prepared');
@@ -209,25 +242,32 @@ export class Playlist {
 				for (const response of responseFiles) {
 					if (response.length > 0) {
 						debug('One of the files changed, restarting loop');
-						this.disableLoop(true);
+						// this.disableLoop(true);
 						this.setCheckFilesLoop(false);
 						break;
 					}
 				}
 			}
+			// no await
+			main(internalStorageUnit, smilFile.src, this.sos);
+			console.log('filesLoop Terminated ' + version);
 		})());
 
 		promises.push((async () => {
 			// endless processing of smil playlist
+
 			await this.runEndlessLoop(async () => {
 				try {
-					await this.processPlaylist(smilObject.playlist);
-					debug('One smil playlist iteration finished');
+					await this.processPlaylist(smilObject.playlist, version);
+					debug('One smil playlist iteration finished ' + version);
+					debug('One smil playlist iteration finished ' + JSON.stringify(this.cancelFunction));
 				} catch (err) {
 					debug('Unexpected error during playlist processing: %O', err);
 					await sleep(5000);
 				}
-			});
+			},                        version);
+			//TODO: playlist u druhyho updatu dojede ale nekde jinde to visi
+			console.log('playlist Terminated ' + version);
 		})());
 
 		promises.push((async () => {
@@ -336,7 +376,7 @@ export class Playlist {
 	 * @param endTime - date in millis when value stops playing
 	 */
 	public processPriorityTag = async (
-		value: PlaylistElement | PlaylistElement[], parent: string = '', endTime: number = 0,
+		value: PlaylistElement | PlaylistElement[], version: number, parent: string = '', endTime: number = 0,
 	): Promise<Promise<void>[]> => {
 		const promises: Promise<void>[] = [];
 		if (!Array.isArray(value)) {
@@ -358,7 +398,7 @@ export class Playlist {
 
 			const priorityObject = createPriorityObject(elem, arrayIndex);
 			promises.push((async () => {
-				await this.processPlaylist(elem, parent, endTime, priorityObject);
+				await this.processPlaylist(elem, version, parent, endTime, priorityObject);
 			})());
 			arrayIndex -= 1;
 		}
@@ -375,7 +415,7 @@ export class Playlist {
 	 * @param priorityObject - contains data about priority behaviour for given playlist
 	 */
 	public processPlaylist = async (
-		playlist: PlaylistElement | PlaylistElement[], parent: string = '',
+		playlist: PlaylistElement | PlaylistElement[], version: number, parent: string = '',
 		endTime: number = 0, priorityObject: PriorityObject =  <PriorityObject> {},
 	) => {
 		for (let [key, loopValue] of Object.entries(playlist)) {
@@ -390,18 +430,18 @@ export class Playlist {
 			if (XmlTags.extractedElements.includes(removeDigits(key))) {
 				const lastPlaylistElem: string = getLastArrayItem(Object.entries(playlist))[0];
 				const isLast = lastPlaylistElem === key;
-				await this.priorityBehaviour(<SMILMedia> value, key, parent, endTime, priorityObject, isLast);
+				await this.priorityBehaviour(<SMILMedia> value, version, key, parent, endTime, priorityObject, isLast);
 				continue;
 			}
 
 			let promises: Promise<void>[] = [];
 
 			if (key === 'excl') {
-				promises = await this.processPriorityTag(value, 'seq', endTime);
+				promises = await this.processPriorityTag(value, version, 'seq', endTime);
 			}
 
 			if (key === 'priorityClass') {
-				promises = await this.processPriorityTag(value, 'seq', endTime);
+				promises = await this.processPriorityTag(value, version, 'seq', endTime);
 			}
 
 			if (key === 'par') {
@@ -412,7 +452,7 @@ export class Playlist {
 						const wrapper = {
 							[controlTag]: elem,
 						};
-						promises.push(this.createDefaultPromise(wrapper, priorityObject, newParent, endTime));
+						promises.push(this.createDefaultPromise(wrapper, version, priorityObject, newParent, endTime));
 					});
 					await Promise.all(promises);
 					continue;
@@ -434,11 +474,11 @@ export class Playlist {
 					}
 
 					if (value.hasOwnProperty('repeatCount') && value.repeatCount !== 'indefinite') {
-						promises.push(this.createRepeatCountDefinitePromise(value, priorityObject, 'par', timeToStart));
+						promises.push(this.createRepeatCountDefinitePromise(value, priorityObject,  version, 'par', timeToStart));
 						await Promise.all(promises);
 						continue;
 					}
-					promises.push(this.createDefaultPromise(value, priorityObject, newParent, timeToEnd, timeToStart));
+					promises.push(this.createDefaultPromise(value, version, priorityObject, newParent, timeToEnd, timeToStart));
 					await Promise.all(promises);
 					continue;
 				}
@@ -448,17 +488,17 @@ export class Playlist {
 				}
 
 				if (value.repeatCount === 'indefinite') {
-					promises.push(this.createRepeatCountIndefinitePromise(value, priorityObject, parent, endTime, key));
+					promises.push(this.createRepeatCountIndefinitePromise(value, priorityObject, version, parent, endTime, key));
 					await Promise.all(promises);
 					continue;
 				}
 
 				if (value.hasOwnProperty('repeatCount') && value.repeatCount !== 'indefinite') {
-					promises.push(this.createRepeatCountDefinitePromise(value, priorityObject, key));
+					promises.push(this.createRepeatCountDefinitePromise(value, priorityObject, version, key));
 					await Promise.all(promises);
 					continue;
 				}
-				promises.push(this.createDefaultPromise(value, priorityObject, newParent, endTime));
+				promises.push(this.createDefaultPromise(value, version, priorityObject, newParent, endTime));
 			}
 
 			if (key === 'seq') {
@@ -489,7 +529,7 @@ export class Playlist {
 
 						if (valueElement.hasOwnProperty('repeatCount') && valueElement.repeatCount !== 'indefinite') {
 							if (timeToStart <= 0) {
-								promises.push(this.createRepeatCountDefinitePromise(valueElement, priorityObject, 'seq', timeToStart));
+								promises.push(this.createRepeatCountDefinitePromise(valueElement, priorityObject, version, 'seq', timeToStart));
 							}
 							if (!parent.startsWith('par')) {
 								await Promise.all(promises);
@@ -499,7 +539,7 @@ export class Playlist {
 						}
 						// play at least one from array to avoid infinite loop
 						if (value.length === 1 || timeToStart <= 0) {
-							promises.push(this.createDefaultPromise(valueElement, priorityObject, newParent, timeToEnd, timeToStart));
+							promises.push(this.createDefaultPromise(valueElement, version, priorityObject, newParent, timeToEnd, timeToStart));
 						}
 						if (!parent.startsWith('par')) {
 							await Promise.all(promises);
@@ -515,7 +555,7 @@ export class Playlist {
 					}
 
 					if (valueElement.hasOwnProperty('repeatCount') && valueElement.repeatCount !== 'indefinite') {
-						promises.push(this.createRepeatCountDefinitePromise(valueElement, priorityObject, 'seq'));
+						promises.push(this.createRepeatCountDefinitePromise(valueElement, priorityObject, version, 'seq'));
 						if (!parent.startsWith('par')) {
 							await Promise.all(promises);
 						}
@@ -523,7 +563,7 @@ export class Playlist {
 					}
 
 					if (valueElement.repeatCount === 'indefinite') {
-						promises.push(this.createRepeatCountIndefinitePromise(valueElement, priorityObject, parent, endTime, key));
+						promises.push(this.createRepeatCountIndefinitePromise(valueElement, priorityObject, version, parent, endTime, key));
 
 						if (!parent.startsWith('par')) {
 							await Promise.all(promises);
@@ -531,7 +571,7 @@ export class Playlist {
 						continue;
 					}
 
-					promises.push(this.createDefaultPromise(valueElement, priorityObject, newParent, endTime));
+					promises.push(this.createDefaultPromise(valueElement, version, priorityObject, newParent, endTime));
 					if (!parent.startsWith('par')) {
 						await Promise.all(promises);
 					}
@@ -737,7 +777,7 @@ export class Playlist {
 		triggerMedia: TriggerObject,
 		) => {
 		set(this.triggersEndless, `${triggerInfo.trigger}.play`, true);
-		await this.processPlaylist(triggerMedia);
+		await this.processPlaylist(triggerMedia, 9999);
 		await Promise.all(this.promiseAwaiting[this.triggersEndless[triggerInfo.trigger].regionInfo.regionName].promiseFunction!);
 
 		// trigger finished playing by itself, cancel it
@@ -749,19 +789,19 @@ export class Playlist {
 	}
 
 	private createDefaultPromise = (
-		value: PlaylistElement, priorityObject: PriorityObject, parent: string, timeToEnd: number, timeToStart: number = -1,
+		value: PlaylistElement, version: number, priorityObject: PriorityObject, parent: string, timeToEnd: number, timeToStart: number = -1,
 		): Promise<void> => {
 		return ((async () => {
 			// if smil file was updated during the timeout wait, cancel that timeout and reload smil again
 			if (timeToStart > 0 && await this.waitTimeoutOrFileUpdate(timeToStart)) {
 				return;
 			}
-			await this.processPlaylist(value, parent, timeToEnd, priorityObject);
+			await this.processPlaylist(value, version, parent, timeToEnd, priorityObject);
 		})());
 	}
 
 	private createRepeatCountDefinitePromise = (
-		value: PlaylistElement, priorityObject: PriorityObject, parent: string, timeToStart: number = -1,
+		value: PlaylistElement, priorityObject: PriorityObject, version: number, parent: string, timeToStart: number = -1,
 		): Promise<void> => {
 		const repeatCount: number = <number> value.repeatCount;
 		let counter = 0;
@@ -772,33 +812,33 @@ export class Playlist {
 				return;
 			}
 			while (counter < repeatCount) {
-				await this.processPlaylist(value, newParent, repeatCount, priorityObject);
+				await this.processPlaylist(value, version, newParent, repeatCount, priorityObject);
 				counter += 1;
 			}
 		})());
 	}
 
 	private createRepeatCountIndefinitePromise = (
-		value: PlaylistElement, priorityObject: PriorityObject, parent: string, endTime: number, key: string,
+		value: PlaylistElement, priorityObject: PriorityObject, version: number, parent: string, endTime: number, key: string,
 		): Promise<void> => {
 		return ((async () => {
 			// when endTime is not set, play indefinitely
 			if (endTime === 0) {
 				let newParent = generateParentId(key, value);
 				await this.runEndlessLoop(async () => {
-					await this.processPlaylist(value, newParent, endTime, priorityObject);
-				});
+					await this.processPlaylist(value, version, newParent, endTime, priorityObject);
+				},                        version);
 				// play N-times, is determined by higher level tag, because this one has repeatCount=indefinite
 			} else if (endTime > 0 && endTime <= 1000) {
 				let newParent = generateParentId(key, value);
 				if (key.startsWith('seq')) {
 					newParent = parent.replace('par', 'seq');
 				}
-				await this.processPlaylist(value, newParent, endTime, priorityObject);
+				await this.processPlaylist(value, version, newParent, endTime, priorityObject);
 			} else {
 				let newParent = generateParentId(key, value);
 				while (Date.now() <= endTime) {
-					await this.processPlaylist(value, newParent, endTime, priorityObject);
+					await this.processPlaylist(value, version, newParent, endTime, priorityObject);
 					// force stop because new version of smil file was detected
 					if (this.getCancelFunction()) {
 						return;
@@ -907,7 +947,7 @@ export class Playlist {
 	}
 
 	private getCancelFunction(): boolean {
-		return this.cancelFunction;
+		return this.cancelFunction[this.cancelFunction.length - 1];
 	}
 
 	private checkRegionsForCancellation = async (
@@ -919,12 +959,14 @@ export class Playlist {
 			debug('cancelling media: %s in default region from element: %s', this.currentlyPlaying[SMILEnums.defaultRegion].src, element.src);
 			this.playingIntro = false;
 			await this.cancelPreviousMedia(this.currentlyPlaying[SMILEnums.defaultRegion].regionInfo);
+			return;
 		}
 
 		if (get(this.currentlyPlaying[regionInfo.regionName], 'src') !== element.src
 			&& get(this.currentlyPlaying[regionInfo.regionName], 'playing')) {
 			debug('cancelling media: %s from element: %s', this.currentlyPlaying[regionInfo.regionName].src, element.src);
 			await this.cancelPreviousMedia(regionInfo);
+			return;
 		}
 
 		// cancel if video is not same as previous one played in the parent region ( triggers case )
@@ -1033,7 +1075,7 @@ export class Playlist {
 	 * @param isLast - if this media is last element in current playlist
 	 */
 	private playTimedMedia = async (
-		value: SMILMediaNoVideo, arrayIndex: number,
+		value: SMILMediaNoVideo, version: number, arrayIndex: number,
 		priorityRegionName: string, currentIndex: number, previousPlayingIndex: number, endTime: number, isLast: boolean,
 	): Promise<void> => {
 		const taskStartDate = moment().toDate();
@@ -1083,6 +1125,10 @@ export class Playlist {
 
 			this.promiseAwaiting[localRegionInfo.regionName].promiseFunction! = [(async () => {
 				let transitionDuration = 0;
+				if (version < this.playlistVersion) {
+					debug('not playing old version');
+					return;
+				}
 				const hasTransition = value.hasOwnProperty('transitionInfo');
 				if (hasTransition) {
 					transitionDuration = setElementDuration(get(value, 'transitionInfo.dur'));
@@ -1132,6 +1178,18 @@ export class Playlist {
 			this.currentlyPlayingPriority[regionInfo.regionName] = this.currentlyPlayingPriority[parentRegion.regionName];
 		}
 
+		// if (first) {
+		// 	console.log('UPDATING++++++++++++++++++++++++++++');
+		// 	this.setCheckFilesLoop(false);
+		// 	first = false;
+		// }
+		//
+		// if (second && element.id === 'img_2_beb3_e6b35b8b.jpg-rootLayout-img3') {
+		// 	console.log('UPDATING---------------------------');
+		// 	this.setCheckFilesLoop(false);
+		// 	second = false;
+		// }
+
 		debug('waiting image duration: %s from element: %s', duration, element.id);
 		// pause function for how long should media stay on display screen
 		while (duration > 0 && !get(this.currentlyPlayingPriority, `${regionInfo.regionName}`)[arrayIndex].player.stop
@@ -1140,9 +1198,9 @@ export class Playlist {
 			while (get(this.currentlyPlayingPriority, `${regionInfo.regionName}`)[arrayIndex].player.contentPause !== 0) {
 				await sleep(100);
 				// if playlist is paused and new smil file version is detected, cancel pause behaviour and cancel playlist
-				if (this.getCancelFunction()) {
-					await this.cancelPreviousMedia(regionInfo);
-				}
+				// if (this.getCancelFunction()) {
+				// 	await this.cancelPreviousMedia(regionInfo);
+				// }
 			}
 			if (transitionDuration !== 0 && duration === transitionDuration
 			&& this.currentlyPlaying[regionInfo.regionName].nextElement.type === 'html') {
@@ -1278,8 +1336,8 @@ export class Playlist {
 		// playlist was already stopped/paused during await
 		if (get(this.currentlyPlayingPriority, `${regionInfo.regionName}`)[currentIndex].player.stop
 			|| get(this.currentlyPlayingPriority, `${regionInfo.regionName}`)[currentIndex].player.contentPause !== 0
-			|| get(this.currentlyPlayingPriority, `${regionInfo.regionName}`)[currentIndex].behaviour === 'pause'
-			|| this.getCancelFunction()) {
+			|| get(this.currentlyPlayingPriority, `${regionInfo.regionName}`)[currentIndex].behaviour === 'pause') {
+			// || this.getCancelFunction()) {
 			debug(
 				'Playlist was stopped/paused by higher priority during await: %O', this.currentlyPlayingPriority[priorityRegionName][currentIndex],
 			);
@@ -1309,7 +1367,8 @@ export class Playlist {
 	 * @param isLast - if this media is last element in current playlist
 	 */
 	private playVideo = async (
-		video: SMILVideo, priorityRegionName: string, currentIndex: number, previousPlayingIndex: number, endTime: number, isLast: boolean,
+		video: SMILVideo, version: number, priorityRegionName: string,
+		currentIndex: number, previousPlayingIndex: number, endTime: number, isLast: boolean,
 		) => {
 		const taskStartDate = moment().toDate();
 		try {
@@ -1354,6 +1413,10 @@ export class Playlist {
 			debug('Playing video after promise all: %O', video);
 
 			this.promiseAwaiting[regionInfo.regionName].promiseFunction! = [(async () => {
+				if (version < this.playlistVersion) {
+					debug('not playing old version');
+					return;
+				}
 				try {
 					await this.sos.video.play(
 						video.localFilePath,
@@ -1435,12 +1498,12 @@ export class Playlist {
 					// no video.stop function so one video can be played gapless in infinite loop
 					// stopping is handled by cancelPreviousMedia function
 					// force stop video only when reloading smil file due to new version of smil
-					if (this.getCancelFunction()) {
-						await this.cancelPreviousMedia(regionInfo);
-						debug('Finished iteration of playlist: %O', this.currentlyPlayingPriority[priorityRegionName][currentIndex]);
-						this.handlePriorityWhenDone(priorityRegionName, currentIndex, endTime, isLast);
-						return;
-					}
+					// if (this.getCancelFunction()) {
+					// 	await this.cancelPreviousMedia(regionInfo);
+					// 	debug('Finished iteration of playlist: %O', this.currentlyPlayingPriority[priorityRegionName][currentIndex]);
+					// 	this.handlePriorityWhenDone(priorityRegionName, currentIndex, endTime, isLast);
+					// 	return;
+					// }
 
 					debug('Finished iteration of playlist: %O', this.currentlyPlayingPriority[priorityRegionName][currentIndex]);
 					this.handlePriorityWhenDone(priorityRegionName, currentIndex, endTime, isLast);
@@ -1551,6 +1614,7 @@ export class Playlist {
 	 */
 	private playOtherMedia = async (
 		value: SMILMediaNoVideo,
+		version: number,
 		parent: string,
 		htmlElement: string,
 		priorityRegionName: string, currentIndex: number, previousPlayingIndex: number, endTime: number, isLast: boolean,
@@ -1566,14 +1630,14 @@ export class Playlist {
 		// widget with website url as datasource
 		if (htmlElement === HtmlEnum.ref && getFileName(value.src).indexOf('.wgt') === -1) {
 			value.localFilePath = value.src;
-			await this.playTimedMedia(value, index, priorityRegionName, currentIndex, previousPlayingIndex, endTime, isLast);
+			await this.playTimedMedia(value, version, index, priorityRegionName, currentIndex, previousPlayingIndex, endTime, isLast);
 			return;
 		}
 		if (htmlElement === 'audio') {
 			await this.playAudio(value.localFilePath);
 			return;
 		}
-		await this.playTimedMedia(value, index, priorityRegionName, currentIndex, previousPlayingIndex, endTime, isLast);
+		await this.playTimedMedia(value, version, index, priorityRegionName, currentIndex, previousPlayingIndex, endTime, isLast);
 	}
 
 	/**
@@ -1588,7 +1652,7 @@ export class Playlist {
 	 * @param isLast - if this media is last element in current playlist
 	 */
 	private playElement = async (
-		value: SMILMedia, key: string, parent: string, priorityRegionName: string,
+		value: SMILMedia, version: number, key: string, parent: string, priorityRegionName: string,
 		currentIndex: number, previousPlayingIndex: number, endTime: number, isLast: boolean,
 	) => {
 		// in case of array elements play it in sequential order or parent is empty ( trigger case )
@@ -1598,16 +1662,16 @@ export class Playlist {
 		debug('Playing element with key: %O, value: %O', key, value);
 		switch (removeDigits(key)) {
 			case 'video':
-				await this.playVideo(<SMILVideo> value, priorityRegionName, currentIndex, previousPlayingIndex, endTime, isLast);
+				await this.playVideo(<SMILVideo> value, version, priorityRegionName, currentIndex, previousPlayingIndex, endTime, isLast);
 				break;
 			case 'ref':
 				await this.playOtherMedia(
-					<SMILWidget> value, parent, HtmlEnum.ref, priorityRegionName, currentIndex, previousPlayingIndex, endTime, isLast,
+					<SMILWidget> value, version, parent, HtmlEnum.ref, priorityRegionName, currentIndex, previousPlayingIndex, endTime, isLast,
 				);
 				break;
 			case SMILEnums.img:
 				await this.playOtherMedia(
-					<SMILImage> value, parent, HtmlEnum.img, priorityRegionName, currentIndex, previousPlayingIndex, endTime, isLast,
+					<SMILImage> value, version, parent, HtmlEnum.img, priorityRegionName, currentIndex, previousPlayingIndex, endTime, isLast,
 				);
 				break;
 			// case 'audio':
@@ -1628,7 +1692,7 @@ export class Playlist {
 	 * @param isLast - if current playlist is last in playlist chain ( could me multiple image, video, widgets playlists )
 	 */
 	private priorityBehaviour = async (
-		value: SMILMedia, key: string, parent: string = '0', endTime: number = 0,
+		value: SMILMedia, version: number, key: string, parent: string = '0', endTime: number = 0,
 		priorityObject: PriorityObject = <PriorityObject> {}, isLast: boolean = false,
 		) =>  {
 		let priorityRegionName;
@@ -1659,7 +1723,7 @@ export class Playlist {
 		}
 
 		this.currentlyPlayingPriority[priorityRegionName][currentIndex].player.playing = true;
-		await this.playElement(value, key, parent, priorityRegionName, currentIndex, previousPlayingIndex, endTime, isLast);
+		await this.playElement(value, version, key, parent, priorityRegionName, currentIndex, previousPlayingIndex, endTime, isLast);
 	}
 
 	/**
