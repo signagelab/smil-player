@@ -51,8 +51,8 @@ import { findDuration, setDefaultAwait, setElementDuration } from './tools/sched
 import { createPriorityObject } from './tools/priorityTools';
 import { main } from "../../index";
 
-// let first = true;
-// let second = true;
+let first = true;
+let second = true;
 
 export class Playlist {
 	private checkFilesLoop: boolean = true;
@@ -69,7 +69,7 @@ export class Playlist {
 	private currentlyPlayingPriority: CurrentlyPlayingPriority = {};
 	private triggersEndless: any = {};
 	private playlistVersion: number = -1;
-	// private update = true;
+	private regionsHash: string = '';
 
 	constructor(sos: FrontApplet, files: Files) {
 		this.sos = sos;
@@ -77,6 +77,14 @@ export class Playlist {
 		// TODO: will be handled differently in the future when we have units tests for sos sdk
 		this.playerName = get(sos, 'config.playerName', '');
 		this.playerId = get(sos, 'config.playerId', '');
+	}
+
+	public setRegionsHash(regionsHash: string) {
+		this.regionsHash = regionsHash;
+	}
+
+	public getRegionsHash() {
+		return this.regionsHash;
 	}
 
 	public setCheckFilesLoop(checkFilesLoop: boolean) {
@@ -750,7 +758,7 @@ export class Playlist {
 
 		promises.push((async () => {
 			while (play) {
-				await this.processPlaylist(triggerMedia);
+				await this.processPlaylist(triggerMedia, 9999);
 			}
 		})());
 
@@ -1178,17 +1186,17 @@ export class Playlist {
 			this.currentlyPlayingPriority[regionInfo.regionName] = this.currentlyPlayingPriority[parentRegion.regionName];
 		}
 
-		// if (first) {
-		// 	console.log('UPDATING++++++++++++++++++++++++++++');
-		// 	this.setCheckFilesLoop(false);
-		// 	first = false;
-		// }
-		//
-		// if (second && element.id === 'img_2_beb3_e6b35b8b.jpg-rootLayout-img3') {
-		// 	console.log('UPDATING---------------------------');
-		// 	this.setCheckFilesLoop(false);
-		// 	second = false;
-		// }
+		if (first) {
+			console.log('UPDATING++++++++++++++++++++++++++++');
+			this.setCheckFilesLoop(false);
+			first = false;
+		}
+
+		if (second && element.id === 'img_2_beb3_e6b35b8b.jpg-rootLayout-img4') {
+			console.log('UPDATING---------------------------');
+			this.setCheckFilesLoop(false);
+			second = false;
+		}
 
 		debug('waiting image duration: %s from element: %s', duration, element.id);
 		// pause function for how long should media stay on display screen

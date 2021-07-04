@@ -16,8 +16,9 @@ import { SMILEnums } from './enums/generalEnums';
 import { createLocalFilePath, getFileName } from './components/files/tools';
 import { FileStructure } from './enums/fileEnums';
 import { SMILFile, SMILFileObject } from './models/filesModels';
-import { generateBackupImagePlaylist, getDefaultRegion, sleep } from './components/playlist/tools/generalTools';
+import { generateBackupImagePlaylist, getDefaultRegion, sleep, hashSortCoerce } from './components/playlist/tools/generalTools';
 import { resetBodyContent, setTransitionsDefinition } from './components/playlist/tools/htmlTools';
+import { inspect } from "util";
 
 const files = new Files(sos);
 const debug = Debug('@signageos/smil-player:main');
@@ -77,6 +78,7 @@ export async function main(internalStorageUnit: IStorageUnit, smilUrl: string, t
 			downloadPromises = [];
 
 			const smilObject: SMILFileObject = await processSmil(smilFileContent);
+			const regionsHash = hashSortCoerce.hash(inspect(Object.assign({}, smilObject.region, smilObject.rootLayout)));
 			debug('SMIL file parsed: %O', smilObject);
 
 			await files.sendSmiFileReport(`${FileStructure.rootFolder}/${getFileName(smilFile.src)}`, smilFile.src);
@@ -87,7 +89,8 @@ export async function main(internalStorageUnit: IStorageUnit, smilUrl: string, t
 			setTransitionsDefinition(smilObject);
 
 			// download and play intro file if exists ( image or video )
-			if (smilObject.intro.length > 0) {
+			if ( smilObject.intro.length > 0 && (regionsHash !== playlist.getRegionsHash())) {
+				resetBodyContent();
 				await playlist.playIntro(smilObject, internalStorageUnit, smilUrl);
 			} else {
 				// no intro
@@ -112,6 +115,8 @@ export async function main(internalStorageUnit: IStorageUnit, smilUrl: string, t
 				playlist.setCheckFilesLoop(true);
 			}
 
+			playlist.setRegionsHash(regionsHash);
+
 			debug('Starting to process parsed smil file');
 			await playlist.processingLoop(internalStorageUnit, smilObject, smilFile);
 
@@ -133,7 +138,7 @@ export async function main(internalStorageUnit: IStorageUnit, smilUrl: string, t
 			if (isNil(sos.config.backupImageUrl)) {
 				backupPlaylist.seq.img.localFilePath = backupImageUrl;
 			}
-			await playlist.processPlaylist(backupPlaylist);
+			await playlist.processPlaylist(backupPlaylist, 0);
 			await sleep(SMILEnums.defaultDownloadRetry * 1000);
 		}
 	}

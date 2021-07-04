@@ -79,6 +79,11 @@ export function resetBodyContent() {
 	document.body.innerHTML = '';
 	document.body.style.backgroundColor = 'transparent';
 	document.body.style.margin = '0px';
+
+	// window.parent.document.getElementById('videos-wrapper-foreground')!.innerHTML = '';
+	// window.parent.document.getElementById('videos-wrapper-foreground')!.style.backgroundColor = 'transparent';
+	// window.parent.document.getElementById('videos-wrapper-background')!.innerHTML = '';
+	// window.parent.document.getElementById('videos-wrapper-background')!.style.backgroundColor = 'transparent';
 }
 
 export function setTransitionsDefinition(smilObject: SMILFileObject) {

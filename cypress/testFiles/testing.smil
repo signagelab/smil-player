@@ -28,12 +28,12 @@
 
         <par> <!-- 1 -->
 
-<!--            <seq end="__prefetchEnd.endEvent">-->
-<!--                <seq repeatCount="indefinite">-->
-<!--                    &lt;!&ndash; Play waiting prompt &ndash;&gt;-->
-<!--                    <video src="https://butikstv.centrumkanalen.com/play/media/ladd/portrait.mp4" />-->
-<!--                </seq>-->
-<!--            </seq>-->
+            <seq end="__prefetchEnd.endEvent">
+                <seq repeatCount="indefinite">
+                    <!-- Play waiting prompt -->
+                    <video src="https://butikstv.centrumkanalen.com/play/media/ladd/portrait.mp4" />
+                </seq>
+            </seq>
 
 
 
